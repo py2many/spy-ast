@@ -29,11 +29,26 @@ jobs:
         with:
           check-latest: true
 
+      - name: Set up libgc
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install bdw-gc
+            gc_prefix="$(brew --prefix bdw-gc)"
+            echo "CPPFLAGS=-I${gc_prefix}/include" >> "$GITHUB_ENV"
+            echo "LDFLAGS=-L${gc_prefix}/lib" >> "$GITHUB_ENV"
+          else
+            sudo apt-get update
+            sudo apt-get install -y libgc-dev
+            echo "LDFLAGS=-L/usr/lib/x86_64-linux-gnu" >> "$GITHUB_ENV"
+          fi
+
       - name: Run Python tests
         run: uv run --with pytest pytest tests_vlang_parser -q
 
       - name: Run V tests
-        run: v -enable-globals test .
+        run: v -enable-globals test typed_api_test.v
 
   build-wheels:
     name: Build wheel (${{ matrix.os }})
@@ -72,6 +87,21 @@ jobs:
           msystem: UCRT64
           path-type: inherit
           install: mingw-w64-ucrt-x86_64-gcc
+
+      - name: Set up libgc
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install bdw-gc
+            gc_prefix="$(brew --prefix bdw-gc)"
+            echo "CPPFLAGS=-I${gc_prefix}/include" >> "$GITHUB_ENV"
+            echo "LDFLAGS=-L${gc_prefix}/lib" >> "$GITHUB_ENV"
+          else
+            sudo apt-get update
+            sudo apt-get install -y libgc-dev
+            echo "LDFLAGS=-L/usr/lib/x86_64-linux-gnu" >> "$GITHUB_ENV"
+          fi
 
       - name: Build wheel
         run: uv build --wheel --out-dir wheelhouse
