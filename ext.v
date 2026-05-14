@@ -1,14 +1,22 @@
 module pyast
 
-pub fn parse_module_json(source string) !string {
+pub fn parse_module(source string) !Module {
 	mut parser := new_parser(source)!
-	mod := parser.parse_module()!
+	return parser.parse_module()!
+}
+
+pub fn parse_expression(source string) !Expr {
+	mut parser := new_parser(source)!
+	return parser.parse_expr_root()!
+}
+
+pub fn parse_module_json(source string) !string {
+	mod := parse_module(source)!
 	return module_json(mod)
 }
 
 pub fn parse_expression_json(source string) !string {
-	mut parser := new_parser(source)!
-	expr := parser.parse_expr_root()!
+	expr := parse_expression(source)!
 	return expr_json(expr)
 }
 

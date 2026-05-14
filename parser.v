@@ -58,7 +58,7 @@ struct Token {
 	text string
 }
 
-type Expr = AttributeExpr
+pub type Expr = AttributeExpr
 	| BinaryExpr
 	| BoolOpExpr
 	| CallExpr
@@ -70,9 +70,9 @@ type Expr = AttributeExpr
 	| SubscriptExpr
 	| UnaryExpr
 
-type Pattern = BindPattern | ValuePattern | WildcardPattern
+pub type Pattern = BindPattern | ValuePattern | WildcardPattern
 
-type Stmt = AssignStmt
+pub type Stmt = AssignStmt
 	| BreakStmt
 	| ClassDefStmt
 	| ContinueStmt
@@ -85,134 +85,159 @@ type Stmt = AssignStmt
 	| ReturnStmt
 	| WhileStmt
 
-struct IntExpr {
+pub struct IntExpr {
+pub:
 	value int
 }
 
-struct StringExpr {
+pub struct StringExpr {
+pub:
 	value string
 }
 
-struct NameExpr {
+pub struct NameExpr {
+pub:
 	name string
 }
 
-struct CallExpr {
+pub struct CallExpr {
+pub:
 	func Expr
 	args []Expr
 }
 
-struct AttributeExpr {
+pub struct AttributeExpr {
+pub:
 	value Expr
 	attr  string
 }
 
-struct SubscriptExpr {
+pub struct SubscriptExpr {
+pub:
 	value Expr
 	slice Expr
 }
 
-struct UnaryExpr {
+pub struct UnaryExpr {
+pub:
 	op      string
 	operand Expr
 }
 
-struct BinaryExpr {
+pub struct BinaryExpr {
+pub:
 	left  Expr
 	op    string
 	right Expr
 }
 
-struct BoolOpExpr {
+pub struct BoolOpExpr {
+pub:
 	op     string
 	values []Expr
 }
 
-struct CompareExpr {
+pub struct CompareExpr {
+pub:
 	left        Expr
 	ops         []string
 	comparators []Expr
 }
 
-struct MatchCase {
+pub struct MatchCase {
+pub:
 	pattern Pattern
 	body    Expr
 }
 
-struct MatchExpr {
+pub struct MatchExpr {
+pub:
 	subject Expr
 	cases   []MatchCase
 }
 
-struct ValuePattern {
+pub struct ValuePattern {
+pub:
 	value int
 }
 
-struct BindPattern {
+pub struct BindPattern {
+pub:
 	name string
 }
 
-struct WildcardPattern {}
+pub struct WildcardPattern {}
 
-struct ExprStmt {
+pub struct ExprStmt {
+pub:
 	value Expr
 }
 
-struct AssignStmt {
+pub struct AssignStmt {
+pub:
 	target string
 	value  Expr
 }
 
-struct PassStmt {}
+pub struct PassStmt {}
 
-struct BreakStmt {}
+pub struct BreakStmt {}
 
-struct ContinueStmt {}
+pub struct ContinueStmt {}
 
-struct ReturnStmt {
+pub struct ReturnStmt {
+pub:
 	value ?Expr
 }
 
-struct IfStmt {
+pub struct IfStmt {
+pub:
 	test   Expr
 	body   []Stmt
 	orelse []Stmt
 }
 
-struct WhileStmt {
+pub struct WhileStmt {
+pub:
 	test   Expr
 	body   []Stmt
 	orelse []Stmt
 }
 
-struct ForStmt {
+pub struct ForStmt {
+pub:
 	target string
 	iter   Expr
 	body   []Stmt
 	orelse []Stmt
 }
 
-struct FunctionDefStmt {
+pub struct FunctionDefStmt {
+pub:
 	name string
 	args []string
 	body []Stmt
 }
 
-struct ClassDefStmt {
+pub struct ClassDefStmt {
+pub:
 	name  string
 	bases []Expr
 	body  []Stmt
 }
 
-struct ImportAlias {
+pub struct ImportAlias {
+pub:
 	name string
 }
 
-struct ImportStmt {
+pub struct ImportStmt {
+pub:
 	names []ImportAlias
 }
 
-struct Module {
+pub struct Module {
+pub:
 	body []Stmt
 }
 
