@@ -19,9 +19,9 @@ except Exception:
 PKG_DIR = Path(__file__).resolve().parent
 ROOT = PKG_DIR.parents[0]
 V_SOURCE_DIR = ROOT
-V_CLI_SOURCE_DIR = ROOT / "cmd" / "v_ast_parser"
+V_CLI_SOURCE_DIR = ROOT / "cmd" / "pyast_parser"
 PACKAGED_V_SOURCE_DIR = PKG_DIR / "_vsrc"
-PARSER_BINARY = PKG_DIR / "_bin" / ("v_ast_parser.exe" if os.name == "nt" else "v_ast_parser")
+PARSER_BINARY = PKG_DIR / "_bin" / ("pyast_parser.exe" if os.name == "nt" else "pyast_parser")
 
 
 def parse_expression(source: str) -> ast.Expression:
@@ -54,7 +54,7 @@ def _run_parser(mode: str, source: str) -> dict[str, Any]:
     finally:
         path.unlink(missing_ok=True)
         if module_path is not None:
-            link = module_path / "py2many" / "v_ast"
+            link = module_path / "pyast"
             link.unlink(missing_ok=True)
             shutil.rmtree(module_path, ignore_errors=True)
 
@@ -70,18 +70,16 @@ def _parser_command(mode: str, source_path: Path) -> tuple[list[str], Path, Path
         return [str(PARSER_BINARY), mode, str(source_path)], ROOT, None
     if PACKAGED_V_SOURCE_DIR.exists():
         module_path = _module_path_for(PACKAGED_V_SOURCE_DIR)
-        packaged_cli = module_path / "py2many" / "v_ast" / "cmd" / "v_ast_parser"
+        packaged_cli = module_path / "pyast" / "cmd" / "pyast_parser"
         return ["v", "-enable-globals", "run", str(packaged_cli), mode, str(source_path)], ROOT, module_path
     module_path = _module_path_for(V_SOURCE_DIR)
-    local_cli = module_path / "py2many" / "v_ast" / "cmd" / "v_ast_parser"
+    local_cli = module_path / "pyast" / "cmd" / "pyast_parser"
     return ["v", "-enable-globals", "run", str(local_cli), mode, str(source_path)], ROOT, module_path
 
 
 def _module_path_for(source_dir: Path) -> Path:
-    module_path = Path(tempfile.mkdtemp(prefix="v_ast_vmodules_"))
-    package_dir = module_path / "py2many"
-    package_dir.mkdir(parents=True, exist_ok=True)
-    (package_dir / "v_ast").symlink_to(source_dir, target_is_directory=True)
+    module_path = Path(tempfile.mkdtemp(prefix="pyast_vmodules_"))
+    (module_path / "pyast").symlink_to(source_dir, target_is_directory=True)
     return module_path
 
 

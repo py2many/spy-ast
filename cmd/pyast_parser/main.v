@@ -1,12 +1,12 @@
 module main
 
 import os
-import py2many.v_ast
+import pyast
 
 fn main() {
 	args := os.args[1..]
 	if args.len < 2 {
-		eprintln('usage: v run cmd/v_ast_parser --json <source-file> | --json-expr <source-file>')
+		eprintln('usage: v run cmd/pyast_parser --json <source-file> | --json-expr <source-file>')
 		exit(2)
 	}
 	mode := args[0]
@@ -16,7 +16,7 @@ fn main() {
 		exit(1)
 	}
 	if mode == '--json' {
-		payload := v_ast.parse_module_json(source) or {
+		payload := pyast.parse_module_json(source) or {
 			eprintln('parse error: ${err}')
 			exit(1)
 		}
@@ -24,7 +24,7 @@ fn main() {
 		return
 	}
 	if mode == '--json-expr' {
-		payload := v_ast.parse_expression_json(source) or {
+		payload := pyast.parse_expression_json(source) or {
 			eprintln('parse error: ${err}')
 			exit(1)
 		}

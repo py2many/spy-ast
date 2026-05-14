@@ -12,11 +12,11 @@
 #endif
 
 #if defined(_WIN32)
-#define V_AST_SHARED_LIB_NAME "v_ast_parser.dll"
+#define V_AST_SHARED_LIB_NAME "pyast_parser.dll"
 #elif defined(__APPLE__)
-#define V_AST_SHARED_LIB_NAME "libv_ast_parser.dylib"
+#define V_AST_SHARED_LIB_NAME "libpyast_parser.dylib"
 #else
-#define V_AST_SHARED_LIB_NAME "libv_ast_parser.so"
+#define V_AST_SHARED_LIB_NAME "libpyast_parser.so"
 #endif
 
 typedef const char* (*v_ast_parse_fn)(const char* source);
@@ -48,9 +48,9 @@ static int ensure_v_lib_loaded(const char* package_dir) {
         PyErr_Format(PyExc_ImportError, "failed to load shared library: %s", lib_path);
         return -1;
     }
-    g_parse_module = (v_ast_parse_fn)GetProcAddress(g_lib_handle, "v_ast_parse_module_json");
-    g_parse_expr = (v_ast_parse_fn)GetProcAddress(g_lib_handle, "v_ast_parse_expression_json");
-    g_last_error = (v_ast_last_error_fn)GetProcAddress(g_lib_handle, "v_ast_last_error");
+    g_parse_module = (v_ast_parse_fn)GetProcAddress(g_lib_handle, "pyast_parse_module_json");
+    g_parse_expr = (v_ast_parse_fn)GetProcAddress(g_lib_handle, "pyast_parse_expression_json");
+    g_last_error = (v_ast_last_error_fn)GetProcAddress(g_lib_handle, "pyast_last_error");
 #else
     snprintf(lib_path, sizeof(lib_path), "%s/%s", package_dir, V_AST_SHARED_LIB_NAME);
     g_lib_handle = dlopen(lib_path, RTLD_NOW | RTLD_LOCAL);
@@ -59,9 +59,9 @@ static int ensure_v_lib_loaded(const char* package_dir) {
         PyErr_Format(PyExc_ImportError, "failed to load shared library %s: %s", lib_path, err ? err : "unknown");
         return -1;
     }
-    g_parse_module = (v_ast_parse_fn)dlsym(g_lib_handle, "v_ast_parse_module_json");
-    g_parse_expr = (v_ast_parse_fn)dlsym(g_lib_handle, "v_ast_parse_expression_json");
-    g_last_error = (v_ast_last_error_fn)dlsym(g_lib_handle, "v_ast_last_error");
+    g_parse_module = (v_ast_parse_fn)dlsym(g_lib_handle, "pyast_parse_module_json");
+    g_parse_expr = (v_ast_parse_fn)dlsym(g_lib_handle, "pyast_parse_expression_json");
+    g_last_error = (v_ast_last_error_fn)dlsym(g_lib_handle, "pyast_last_error");
 #endif
 
     if (g_parse_module == NULL || g_parse_expr == NULL || g_last_error == NULL) {

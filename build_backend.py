@@ -1,7 +1,7 @@
 """PEP 517 backend for v-ast.
 
 Build outputs include:
-- Python package `py_match_parser`
+- Python package `v_ast`
 - Native V shared library
 - CPython extension that calls into the V shared library
 - Native parser executable fallback
@@ -24,11 +24,11 @@ import zipfile
 NAME = "v-ast"
 VERSION = "0.1.0"
 ROOT = pathlib.Path(__file__).resolve().parent
-PACKAGE_DIR = ROOT / "py_match_parser"
+PACKAGE_DIR = ROOT / "v_ast"
 VSRC_DIR = ROOT
-VCLI_DIR = ROOT / "cmd" / "v_ast_parser"
+VCLI_DIR = ROOT / "cmd" / "pyast_parser"
 EXT_SOURCE = PACKAGE_DIR / "_vext.c"
-BINARY_BASENAME = "v_ast_parser"
+BINARY_BASENAME = "pyast_parser"
 
 
 def _dist_info_dir() -> str:
@@ -84,18 +84,18 @@ def _run_checked(cmd: list[str], cwd: pathlib.Path | None = None) -> None:
 
 
 def _with_module_path(cmd: list[str], temp_dir: pathlib.Path) -> list[str]:
-    module_dir = temp_dir / "py2many" / "v_ast"
-    module_dir.parent.mkdir(parents=True, exist_ok=True)
+    module_dir = temp_dir / "pyast"
+    temp_dir.mkdir(parents=True, exist_ok=True)
     module_dir.symlink_to(ROOT, target_is_directory=True)
     return [cmd[0], "-path", f"{temp_dir}|@vlib|@vmodules", *cmd[1:]]
 
 
 def _shared_lib_name() -> str:
     if os.name == "nt":
-        return "v_ast_parser.dll"
+        return "pyast_parser.dll"
     if sys.platform == "darwin":
-        return "libv_ast_parser.dylib"
-    return "libv_ast_parser.so"
+        return "libpyast_parser.dylib"
+    return "libpyast_parser.so"
 
 
 def _build_shared_library() -> tuple[str, bytes]:
@@ -103,7 +103,7 @@ def _build_shared_library() -> tuple[str, bytes]:
     with tempfile.TemporaryDirectory() as tmpdir:
         temp_dir = pathlib.Path(tmpdir)
         out = temp_dir / libname
-        target = temp_dir / "py2many" / "v_ast"
+        target = temp_dir / "pyast"
         cmd = _with_module_path(["v", "-enable-globals", "-shared", "-o", str(out), str(target)], temp_dir)
         _run_checked(cmd, cwd=ROOT)
         return libname, out.read_bytes()
@@ -114,7 +114,7 @@ def _build_binary() -> tuple[str, bytes]:
     with tempfile.TemporaryDirectory() as tmpdir:
         temp_dir = pathlib.Path(tmpdir)
         out = temp_dir / f"{BINARY_BASENAME}{suffix}"
-        target = temp_dir / "py2many" / "v_ast" / "cmd" / "v_ast_parser"
+        target = temp_dir / "pyast" / "cmd" / "pyast_parser"
         cmd = _with_module_path(["v", "-enable-globals", "-o", str(out), str(target)], temp_dir)
         _run_checked(cmd, cwd=ROOT)
         return out.name, out.read_bytes()
@@ -186,7 +186,7 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
             rows.append(
                 _write_entry(
                     zf,
-                    f"{PACKAGE_DIR.name}/_vsrc/cmd/v_ast_parser/{src.name}",
+                    f"{PACKAGE_DIR.name}/_vsrc/cmd/pyast_parser/{src.name}",
                     src.read_bytes(),
                     0o644,
                 )
