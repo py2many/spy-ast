@@ -72,7 +72,7 @@ def _metadata() -> str:
             f"Name: {NAME}",
             f"Version: {VERSION}",
             "Summary: Static Python AST parser for a modified Python dialect with match as an expression.",
-            "Requires-Python: >=3.11",
+            "Requires-Python: >=3.10",
             "",
         ]
     )
