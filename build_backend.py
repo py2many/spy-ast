@@ -98,13 +98,6 @@ def _record_line(path: str, data: bytes) -> tuple[str, str, str]:
 
 def _run_checked(cmd: list[str], cwd: pathlib.Path | None = None) -> None:
     proc = subprocess.run(cmd, cwd=cwd, check=False, text=True, capture_output=True)
-    if "-showcc" in _vflags() or "-show-c-output" in _vflags():
-        rendered = " ".join(shlex.quote(x) for x in cmd)
-        print(f"running: {rendered}")
-        if proc.stdout:
-            print(proc.stdout, end="")
-        if proc.stderr:
-            print(proc.stderr, end="", file=sys.stderr)
     if proc.returncode != 0:
         message = proc.stderr.strip() or proc.stdout.strip() or "command failed"
         rendered = " ".join(shlex.quote(x) for x in cmd)
