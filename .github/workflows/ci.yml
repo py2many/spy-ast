@@ -81,11 +81,13 @@ jobs:
             runner: ubuntu-latest
             manylinux_image: quay.io/pypa/manylinux_2_34_x86_64
             v_asset: v_linux.zip
+            vflags: "-cflags '-march=x86-64'"
           - os: linux
             platform: aarch64
             runner: ubuntu-22.04-arm
             manylinux_image: quay.io/pypa/manylinux_2_34_aarch64
             v_asset: v_linux_arm64.zip
+            vflags: ''
           - os: macos
             platform: arm64
             runner: macos-latest
@@ -163,6 +165,7 @@ jobs:
           docker run --rm \
             -e V_VERSION="${V_VERSION}" \
             -e V_ASSET="${{ matrix.v_asset }}" \
+            -e VFLAGS="${{ matrix.vflags }}" \
             -e HOST_UID="$(id -u)" \
             -e HOST_GID="$(id -g)" \
             -v "${GITHUB_WORKSPACE}:/io" \
