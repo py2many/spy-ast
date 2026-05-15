@@ -134,13 +134,20 @@ def _shared_lib_name() -> str:
     return "libpyast_parser.so"
 
 
+def _vflags() -> list[str]:
+    return shlex.split(os.environ.get("VFLAGS", ""))
+
+
 def _build_shared_library() -> tuple[str, bytes]:
     libname = _shared_lib_name()
     with tempfile.TemporaryDirectory() as tmpdir:
         temp_dir = pathlib.Path(tmpdir)
         out = temp_dir / libname
         target = temp_dir / "pyast"
-        cmd = _with_module_path(["v", "-enable-globals", "-shared", "-o", str(out), str(target)], temp_dir)
+        cmd = _with_module_path(
+            ["v", "-enable-globals", *_vflags(), "-shared", "-o", str(out), str(target)],
+            temp_dir,
+        )
         _run_checked(cmd, cwd=ROOT)
         return libname, out.read_bytes()
 
@@ -151,7 +158,10 @@ def _build_binary() -> tuple[str, bytes]:
         temp_dir = pathlib.Path(tmpdir)
         out = temp_dir / f"{BINARY_BASENAME}{suffix}"
         target = temp_dir / "pyast" / "cmd" / "pyast_parser"
-        cmd = _with_module_path(["v", "-enable-globals", "-o", str(out), str(target)], temp_dir)
+        cmd = _with_module_path(
+            ["v", "-enable-globals", *_vflags(), "-o", str(out), str(target)],
+            temp_dir,
+        )
         _run_checked(cmd, cwd=ROOT)
         return out.name, out.read_bytes()
 
