@@ -27,25 +27,19 @@ Dialect trees get source locations filled in uniformly.
 """
 
 import ast as _stdlib_ast
+import inspect as _inspect
 from ast import *  # noqa: F401,F403
 from typing import Any
 
 
-def parse(
+def _parse_forward(
     source: str | bytes | bytearray,
-    filename: str = "<unknown>",
-    mode: str = "exec",
-    *,
-    type_comments: bool = False,
-    feature_version: tuple[int, int] | None = None,
-    optimize: int = -1,
+    filename: str,
+    mode: str,
+    type_comments: bool,
+    feature_version: tuple[int, int] | None,
+    optimize: int,
 ) -> Any:
-    """Parse *source* into an AST, mirroring :func:`ast.parse`.
-
-    Python-compatible input is handled by the standard library parser and
-    produces byte-identical trees. Input the standard parser rejects (the
-    ``match``-as-expression dialect) falls back to the ``spy-ast`` parser.
-    """
     from .wrapper import parse as _parse
 
     return _parse(
@@ -56,6 +50,42 @@ def parse(
         feature_version=feature_version,
         optimize=optimize,
     )
+
+
+if "optimize" in _inspect.signature(_stdlib_ast.parse).parameters:
+
+    def parse(
+        source: str | bytes | bytearray,
+        filename: str = "<unknown>",
+        mode: str = "exec",
+        *,
+        type_comments: bool = False,
+        feature_version: tuple[int, int] | None = None,
+        optimize: int = -1,
+    ) -> Any:
+        """Parse *source* into an AST, mirroring :func:`ast.parse`.
+
+        Parsing is done entirely by the ``spy-ast`` dialect parser; the
+        standard library parser is never consulted.
+        """
+        return _parse_forward(source, filename, mode, type_comments, feature_version, optimize)
+
+else:
+
+    def parse(
+        source: str | bytes | bytearray,
+        filename: str = "<unknown>",
+        mode: str = "exec",
+        *,
+        type_comments: bool = False,
+        feature_version: tuple[int, int] | None = None,
+    ) -> Any:
+        """Parse *source* into an AST, mirroring :func:`ast.parse`.
+
+        Parsing is done entirely by the ``spy-ast`` dialect parser; the
+        standard library parser is never consulted.
+        """
+        return _parse_forward(source, filename, mode, type_comments, feature_version, -1)
 
 
 def __getattr__(name: str) -> Any:
