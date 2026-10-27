@@ -21,6 +21,41 @@ choices, we introduce equivalent constructs.
 Python was designed to be a beginner friendly language. Static python
 as defined in this module is mostly aimed at agents.
 
+## Drop-in replacement for `ast`
+
+`spy_ast.ast` mirrors the standard library's `ast` module and can replace
+it wherever a parser is needed, e.g. in [py2many](../py2many):
+
+```python
+import spy_ast.ast as ast  # drop-in for `import ast`
+
+tree = ast.parse(source)  # same signature as ast.parse
+```
+
+Alternatively, `import spy_ast as ast` exposes the same surface.
+
+Behavior of `ast.parse`:
+
+- Parsing is done entirely by the `spy-ast` dialect parser; the standard
+  library parser is never consulted.
+- Source within the supported subset — the Python-compatible subset plus
+  `match` as an expression — produces trees identical to builtin `ast`,
+  with source locations filled in.
+- Source outside the supported subset raises `SyntaxError` instead of
+  producing a degraded tree. Rejecting the long tail of valid Python
+  (decorators, annotations, comprehensions, keyword arguments, ...) is
+  deliberate: a successful parse always means a faithful tree.
+
+All other helpers (`dump`, `unparse`, `walk`, `NodeVisitor`,
+`NodeTransformer`, `fix_missing_locations`, ...) are the standard library
+objects, so existing visitors and rewriters work unchanged on the trees
+this parser builds.
+
+The lower-level `spy_ast.parse_module` / `spy_ast.parse_expression`
+helpers call the dialect (V) parser directly. It accepts the supported
+subset — including `from`-imports, `as` aliases, and `True` / `False` /
+`None` constants — and fails loudly on anything else.
+
 ## Example
 
 Save this as `dump_ast.py`:
