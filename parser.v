@@ -3530,7 +3530,7 @@ fn (mut p Parser) parse_dict_expr(first Expr) !Expr {
 		}
 		if p.curr.kind == .pow {
 			p.advance()!
-			keys << none
+			keys << ?Expr(none)
 			values << p.parse_test()!
 			continue
 		}
@@ -3551,7 +3551,7 @@ fn (mut p Parser) parse_dict_expr_none_key() !Expr {
 	mut values := []Expr{}
 	for {
 		p.expect(.pow)!
-		keys << none
+		keys << ?Expr(none)
 		values << p.parse_test()!
 		if p.curr.kind == .comma {
 			p.advance()!
