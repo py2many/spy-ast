@@ -121,14 +121,16 @@ def test_full_python_module_is_rejected() -> None:
 def test_v_parser_rejects_unsupported_statements() -> None:
     # The V parser is strict: anything outside its subset is an error rather
     # than a silently degraded tree.
-    # Plain, aliased, relative, and parenthesized import-from are supported
-    # (see test_builtin_ast_compat.py); everything else outside the subset
-    # must fail loudly instead of degrading to Pass.
+    # The V parser is strict: anything outside its subset is an error rather
+    # than a silently degraded tree. Each source below is either invalid
+    # Python or a deliberately unsupported construct.
     for source in [
-        "try:\n    pass\nexcept ValueError:\n    pass\n",
-        "with open('f') as f:\n    pass\n",
-        "@decorator\ndef f():\n    pass\n",
-        "x: int = 1\n",
+        "x = b'bytes'\n",
+        "x = 1j\n",
+        "x = f'{v:{w}}'\n",
+        "type u8 = int\n",
+        "x = 1; y = 2\n",
+        "match x:\n    case 1:\n        pass\n",
     ]:
         with pytest.raises(ValueError):
             parse_module(source)

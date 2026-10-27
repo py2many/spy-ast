@@ -164,9 +164,23 @@ def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:
         return ast.Expr(value=_expr_from_json(data["value"]))
     if kind == "Assign":
         return ast.Assign(
-            targets=[ast.Name(id=data["target"], ctx=ast.Store())],
+            targets=[_set_ctx(_expr_from_json(item), ast.Store) for item in data["targets"]],
             value=_expr_from_json(data["value"]),
             type_comment=None,
+        )
+    if kind == "AugAssign":
+        return ast.AugAssign(
+            target=_set_ctx(_expr_from_json(data["target"]), ast.Store),
+            op=_bin_op(data["op"]),
+            value=_expr_from_json(data["value"]),
+        )
+    if kind == "AnnAssign":
+        value = data.get("value")
+        return ast.AnnAssign(
+            target=_set_ctx(_expr_from_json(data["target"]), ast.Store),
+            annotation=_expr_from_json(data["annotation"]),
+            value=None if value is None else _expr_from_json(value),
+            simple=int(data.get("simple", 0)),
         )
     if kind == "Pass":
         return ast.Pass()
@@ -177,6 +191,27 @@ def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:
     if kind == "Return":
         raw = data["value"]
         return ast.Return(value=None if raw is None else _expr_from_json(raw))
+    if kind == "Assert":
+        raw = data.get("msg")
+        return ast.Assert(
+            test=_expr_from_json(data["test"]),
+            msg=None if raw is None else _expr_from_json(raw),
+        )
+    if kind == "Delete":
+        return ast.Delete(
+            targets=[_set_ctx(_expr_from_json(item), ast.Del) for item in data["targets"]]
+        )
+    if kind == "Raise":
+        exc = data.get("exc")
+        cause = data.get("cause")
+        return ast.Raise(
+            exc=None if exc is None else _expr_from_json(exc),
+            cause=None if cause is None else _expr_from_json(cause),
+        )
+    if kind == "Global":
+        return ast.Global(names=list(data.get("names", [])))
+    if kind == "Nonlocal":
+        return ast.Nonlocal(names=list(data.get("names", [])))
     if kind == "If":
         return ast.If(
             test=_expr_from_json(data["test"]),
@@ -189,21 +224,29 @@ def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:
             body=[_stmt_from_json(item) for item in data["body"]],
             orelse=[_stmt_from_json(item) for item in data["orelse"]],
         )
-    if kind == "For":
-        return ast.For(
-            target=ast.Name(id=data["target"], ctx=ast.Store()),
+    if kind in ("For", "AsyncFor"):
+        node = (
+            ast.AsyncFor
+            if kind == "AsyncFor"
+            else ast.For
+        )(
+            target=_set_ctx(_expr_from_json(data["target"]), ast.Store),
             iter=_expr_from_json(data["iter"]),
             body=[_stmt_from_json(item) for item in data["body"]],
             orelse=[_stmt_from_json(item) for item in data["orelse"]],
             type_comment=None,
         )
-    if kind == "FunctionDef":
-        node = ast.FunctionDef(
+        return node
+    if kind in ("FunctionDef", "AsyncFunctionDef"):
+        cls = ast.AsyncFunctionDef if kind == "AsyncFunctionDef" else ast.FunctionDef
+        node = cls(
             name=data["name"],
-            args=_arguments_from_names(data["args"]),
+            args=_arguments_from_json(data["args"]),
             body=[_stmt_from_json(item) for item in data["body"]],
-            decorator_list=[],
-            returns=None,
+            decorator_list=[_expr_from_json(item) for item in data.get("decorator_list", [])],
+            returns=None
+            if data.get("returns") is None
+            else _expr_from_json(data["returns"]),
             type_comment=None,
         )
         _set_optional_field(node, "type_params", [])
@@ -212,12 +255,27 @@ def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:
         node = ast.ClassDef(
             name=data["name"],
             bases=[_expr_from_json(item) for item in data["bases"]],
-            keywords=[],
+            keywords=[_keyword_from_json(item) for item in data.get("keywords", [])],
             body=[_stmt_from_json(item) for item in data["body"]],
-            decorator_list=[],
+            decorator_list=[_expr_from_json(item) for item in data.get("decorator_list", [])],
         )
         _set_optional_field(node, "type_params", [])
         return node
+    if kind in ("With", "AsyncWith"):
+        cls = ast.AsyncWith if kind == "AsyncWith" else ast.With
+        return cls(
+            items=[_withitem_from_json(item) for item in data["items"]],
+            body=[_stmt_from_json(item) for item in data["body"]],
+            type_comment=None,
+        )
+    if kind in ("Try", "TryStar"):
+        cls = ast.TryStar if kind == "TryStar" else ast.Try
+        return cls(
+            body=[_stmt_from_json(item) for item in data["body"]],
+            handlers=[_except_handler_from_json(item) for item in data["handlers"]],
+            orelse=[_stmt_from_json(item) for item in data["orelse"]],
+            finalbody=[_stmt_from_json(item) for item in data["finalbody"]],
+        )
     raise SpySyntaxError(f"unsupported statement type: {kind}")
 
 
@@ -225,13 +283,17 @@ def _expr_from_json(data: dict[str, Any]) -> ast.expr:
     kind = data["type"]
     if kind == "Constant":
         return ast.Constant(value=data["value"], kind=None)
+    if kind == "Float":
+        return ast.Constant(value=float(data["value"]), kind=None)
+    if kind == "Ellipsis":
+        return ast.Constant(value=Ellipsis, kind=None)
     if kind == "Name":
         return ast.Name(id=data["id"], ctx=ast.Load())
     if kind == "Call":
         return ast.Call(
             func=_expr_from_json(data["func"]),
             args=[_expr_from_json(item) for item in data["args"]],
-            keywords=[],
+            keywords=[_keyword_from_json(item) for item in data.get("keywords", [])],
         )
     if kind == "Attribute":
         return ast.Attribute(value=_expr_from_json(data["value"]), attr=data["attr"], ctx=ast.Load())
@@ -240,6 +302,17 @@ def _expr_from_json(data: dict[str, Any]) -> ast.expr:
             value=_expr_from_json(data["value"]),
             slice=_expr_from_json(data["slice"]),
             ctx=ast.Load(),
+        )
+    if kind == "Starred":
+        return ast.Starred(value=_expr_from_json(data["value"]), ctx=ast.Load())
+    if kind == "Slice":
+        lower = data.get("lower")
+        upper = data.get("upper")
+        step = data.get("step")
+        return ast.Slice(
+            lower=None if lower is None else _expr_from_json(lower),
+            upper=None if upper is None else _expr_from_json(upper),
+            step=None if step is None else _expr_from_json(step),
         )
     if kind == "UnaryOp":
         return ast.UnaryOp(op=_unary_op(data["op"]), operand=_expr_from_json(data["operand"]))
@@ -257,6 +330,68 @@ def _expr_from_json(data: dict[str, Any]) -> ast.expr:
             ops=[_cmp_op(str(x)) for x in data["ops"]],
             comparators=[_expr_from_json(item) for item in data["comparators"]],
         )
+    if kind == "IfExp":
+        return ast.IfExp(
+            test=_expr_from_json(data["test"]),
+            body=_expr_from_json(data["body"]),
+            orelse=_expr_from_json(data["orelse"]),
+        )
+    if kind == "NamedExpr":
+        return ast.NamedExpr(
+            target=ast.Name(id=data["target"], ctx=ast.Store()),
+            value=_expr_from_json(data["value"]),
+        )
+    if kind == "Lambda":
+        return ast.Lambda(
+            args=_arguments_from_json(data["args"]),
+            body=_expr_from_json(data["body"]),
+        )
+    if kind == "Yield":
+        raw = data.get("value")
+        return ast.Yield(value=None if raw is None else _expr_from_json(raw))
+    if kind == "YieldFrom":
+        return ast.YieldFrom(value=_expr_from_json(data["value"]))
+    if kind == "Await":
+        return ast.Await(value=_expr_from_json(data["value"]))
+    if kind == "List":
+        return ast.List(elts=[_expr_from_json(item) for item in data["elts"]], ctx=ast.Load())
+    if kind == "Tuple":
+        return ast.Tuple(elts=[_expr_from_json(item) for item in data["elts"]], ctx=ast.Load())
+    if kind == "Set":
+        return ast.Set(elts=[_expr_from_json(item) for item in data["elts"]])
+    if kind == "Dict":
+        keys = [None if item is None else _expr_from_json(item) for item in data["keys"]]
+        return ast.Dict(keys=keys, values=[_expr_from_json(item) for item in data["values"]])
+    if kind == "ListComp":
+        return ast.ListComp(
+            elt=_expr_from_json(data["elt"]),
+            generators=[_comprehension_from_json(item) for item in data["generators"]],
+        )
+    if kind == "SetComp":
+        return ast.SetComp(
+            elt=_expr_from_json(data["elt"]),
+            generators=[_comprehension_from_json(item) for item in data["generators"]],
+        )
+    if kind == "GeneratorExp":
+        return ast.GeneratorExp(
+            elt=_expr_from_json(data["elt"]),
+            generators=[_comprehension_from_json(item) for item in data["generators"]],
+        )
+    if kind == "DictComp":
+        return ast.DictComp(
+            key=_expr_from_json(data["key"]),
+            value=_expr_from_json(data["value"]),
+            generators=[_comprehension_from_json(item) for item in data["generators"]],
+        )
+    if kind == "JoinedStr":
+        return ast.JoinedStr(values=[_expr_from_json(item) for item in data["values"]])
+    if kind == "FormattedValue":
+        raw = data.get("format_spec")
+        return ast.FormattedValue(
+            value=_expr_from_json(data["value"]),
+            conversion=int(data.get("conversion", -1)),
+            format_spec=None if raw is None else _expr_from_json(raw),
+        )
     if kind == "Match":
         return ast.Match(
             subject=_expr_from_json(data["subject"]),
@@ -265,8 +400,80 @@ def _expr_from_json(data: dict[str, Any]) -> ast.expr:
     raise SpySyntaxError(f"unsupported expression type: {kind}")
 
 
-def _alias_from_json(data: dict[str, Any]) -> ast.alias:
-    return ast.alias(name=data["name"], asname=data.get("asname"))
+def _set_ctx(node: ast.AST, ctx: ast.expr_context) -> ast.AST:
+    if isinstance(node, ast.Name):
+        node.ctx = ctx() if isinstance(ctx, type) else ctx
+        return node
+    if isinstance(node, ast.Starred):
+        node.value = _set_ctx(node.value, ctx)
+        node.ctx = ctx() if isinstance(ctx, type) else ctx
+        return node
+    if isinstance(node, (ast.Tuple, ast.List)):
+        node.elts = [_set_ctx(elt, ctx) for elt in node.elts]
+        node.ctx = ctx() if isinstance(ctx, type) else ctx
+        return node
+    if isinstance(node, (ast.Attribute, ast.Subscript)):
+        node.ctx = ctx() if isinstance(ctx, type) else ctx
+        return node
+    return node
+
+
+def _keyword_from_json(data: dict[str, Any]) -> ast.keyword:
+    return ast.keyword(arg=data.get("arg"), value=_expr_from_json(data["value"]))
+
+
+def _comprehension_from_json(data: dict[str, Any]) -> ast.comprehension:
+    return ast.comprehension(
+        target=_set_ctx(_expr_from_json(data["target"]), ast.Store),
+        iter=_expr_from_json(data["iter"]),
+        ifs=[_expr_from_json(item) for item in data.get("ifs", [])],
+        is_async=int(data.get("is_async", 0)),
+    )
+
+
+def _except_handler_from_json(data: dict[str, Any]) -> ast.ExceptHandler:
+    if data.get("type", "ExceptHandler") != "ExceptHandler":
+        raise SpySyntaxError(f"unsupported handler type: {data.get('type')}")
+    typ = data.get("typ")
+    return ast.ExceptHandler(
+        type=None if typ is None else _expr_from_json(typ),
+        name=data.get("name"),
+        body=[_stmt_from_json(item) for item in data["body"]],
+    )
+
+
+def _withitem_from_json(data: dict[str, Any]) -> ast.withitem:
+    if data.get("type", "withitem") != "withitem":
+        raise SpySyntaxError(f"unsupported withitem type: {data.get('type')}")
+    raw = data.get("vars")
+    return ast.withitem(
+        context_expr=_expr_from_json(data["context_expr"]),
+        optional_vars=None if raw is None else _set_ctx(_expr_from_json(raw), ast.Store),
+    )
+
+
+def _arg_from_json(data: dict[str, Any]) -> ast.arg:
+    raw = data.get("annotation")
+    return ast.arg(
+        arg=str(data["arg"]),
+        annotation=None if raw is None else _expr_from_json(raw),
+        type_comment=None,
+    )
+
+
+def _arguments_from_json(data: dict[str, Any]) -> ast.arguments:
+    return ast.arguments(
+        posonlyargs=[_arg_from_json(item) for item in data.get("posonlyargs", [])],
+        args=[_arg_from_json(item) for item in data.get("args", [])],
+        vararg=None if data.get("vararg") is None else _arg_from_json(data["vararg"]),
+        kwonlyargs=[_arg_from_json(item) for item in data.get("kwonlyargs", [])],
+        kw_defaults=[
+            None if item is None else _expr_from_json(item)
+            for item in data.get("kw_defaults", [])
+        ],
+        kwarg=None if data.get("kwarg") is None else _arg_from_json(data["kwarg"]),
+        defaults=[_expr_from_json(item) for item in data.get("defaults", [])],
+    )
 
 
 def _pattern_from_json(data: dict[str, Any]) -> ast.pattern:
@@ -291,16 +498,8 @@ def _case_from_json(data: dict[str, Any]) -> ast.match_case:
     )
 
 
-def _arguments_from_names(names: list[Any]) -> ast.arguments:
-    return ast.arguments(
-        posonlyargs=[],
-        args=[ast.arg(arg=str(name), annotation=None, type_comment=None) for name in names],
-        vararg=None,
-        kwonlyargs=[],
-        kw_defaults=[],
-        kwarg=None,
-        defaults=[],
-    )
+def _alias_from_json(data: dict[str, Any]) -> ast.alias:
+    return ast.alias(name=data["name"], asname=data.get("asname"))
 
 
 def _set_optional_field(node: ast.AST, name: str, value: Any) -> None:
@@ -313,6 +512,7 @@ def _unary_op(name: str) -> ast.unaryop:
         "Not": ast.Not,
         "UAdd": ast.UAdd,
         "USub": ast.USub,
+        "Invert": ast.Invert,
     }
     return ops[name]()
 
@@ -323,6 +523,15 @@ def _bin_op(name: str) -> ast.operator:
         "Sub": ast.Sub,
         "Mult": ast.Mult,
         "Div": ast.Div,
+        "FloorDiv": ast.FloorDiv,
+        "Mod": ast.Mod,
+        "Pow": ast.Pow,
+        "MatMult": ast.MatMult,
+        "BitAnd": ast.BitAnd,
+        "BitOr": ast.BitOr,
+        "BitXor": ast.BitXor,
+        "LShift": ast.LShift,
+        "RShift": ast.RShift,
     }
     return ops[name]()
 
@@ -343,5 +552,9 @@ def _cmp_op(name: str) -> ast.cmpop:
         "LtE": ast.LtE,
         "Gt": ast.Gt,
         "GtE": ast.GtE,
+        "In": ast.In,
+        "NotIn": ast.NotIn,
+        "Is": ast.Is,
+        "IsNot": ast.IsNot,
     }
     return ops[name]()
