@@ -1,5 +1,21 @@
 from __future__ import annotations
 
+"""Parse helpers shared by the ``spy_ast`` package.
+
+All parsing is done by the V-based dialect parser; the standard library
+parser is never consulted. The parser accepts the Python-compatible subset
+plus the ``match``-as-expression extension, and raises :class:`SyntaxError`
+for anything else. Rejecting the long tail of valid Python outside the
+subset is deliberate: a successful parse always means a faithful tree.
+
+* :func:`parse_expression` / :func:`parse_module` are the direct entry
+  points for expressions and modules.
+* :func:`parse` mirrors the :func:`ast.parse` signature (``source``,
+  ``filename``, ``mode``, ``type_comments``, ``feature_version``) so it can
+  replace it call-for-call. The extra keyword arguments are accepted for
+  compatibility but do not change parsing.
+"""
+
 import json
 import os
 import shutil
@@ -24,16 +40,67 @@ PACKAGED_V_SOURCE_DIR = PKG_DIR / "_vsrc"
 PARSER_BINARY = PKG_DIR / "_bin" / ("pyast_parser.exe" if os.name == "nt" else "pyast_parser")
 
 
-def parse_expression(source: str) -> ast.Expression:
-    payload = _run_parser("--json-expr", source)
-    return ast.Expression(body=_expr_from_json(payload))
+class SpySyntaxError(SyntaxError, ValueError):
+    """Raised when the dialect parser rejects its input.
+
+    Subclasses :class:`SyntaxError` so ``except SyntaxError`` handlers written
+    for builtin :func:`ast.parse` keep working, and :class:`ValueError` for
+    backwards compatibility with earlier ``spy-ast`` releases.
+    """
 
 
-def parse_module(source: str) -> ast.Module:
-    payload = _run_parser("--json", source)
+def parse(
+    source: str | bytes | bytearray,
+    filename: str = "<unknown>",
+    mode: str = "exec",
+    *,
+    type_comments: bool = False,
+    feature_version: tuple[int, int] | None = None,
+    optimize: int = -1,
+) -> Any:
+    """Drop-in replacement for :func:`ast.parse`, powered only by spy-ast.
+
+    Accepts the same arguments (``type_comments``, ``feature_version`` and
+    ``optimize`` are accepted for compatibility and otherwise ignored).
+    ``mode="eval"`` parses an expression, ``mode="exec"`` a module, and
+    ``mode="single"`` a module body wrapped in :class:`ast.Interactive`.
+    Raises :class:`SyntaxError` for source outside the supported subset.
+    """
+    if mode != "exec" and mode != "eval" and mode != "single":
+        raise ValueError(f"parse() mode must be 'exec', 'eval' or 'single', not {mode!r}")
+    text = _coerce_text(source)
+    try:
+        if mode == "eval":
+            return parse_expression(text)
+        module = parse_module(text)
+        if mode == "single":
+            return ast.fix_missing_locations(ast.Interactive(body=module.body))
+        return module
+    except SpySyntaxError as err:
+        err.filename = filename
+        raise
+
+
+def parse_expression(source: str | bytes | bytearray) -> ast.Expression:
+    payload = _run_parser("--json-expr", _coerce_text(source))
+    tree = ast.Expression(body=_expr_from_json(payload))
+    return ast.fix_missing_locations(tree)
+
+
+def parse_module(source: str | bytes | bytearray) -> ast.Module:
+    payload = _run_parser("--json", _coerce_text(source))
     if payload.get("type") != "Module":
-        raise ValueError(f"expected Module payload, got {payload.get('type')}")
-    return ast.Module(body=[_stmt_from_json(item) for item in payload["body"]], type_ignores=[])
+        raise SpySyntaxError(f"expected Module payload, got {payload.get('type')}")
+    tree = ast.Module(body=[_stmt_from_json(item) for item in payload["body"]], type_ignores=[])
+    return ast.fix_missing_locations(tree)
+
+
+def _coerce_text(source: str | bytes | bytearray) -> str:
+    if isinstance(source, str):
+        return source
+    if isinstance(source, (bytes, bytearray)):
+        return bytes(source).decode("utf-8")
+    raise TypeError(f"parse() argument must be str or bytes, got {type(source).__name__}")
 
 
 def _run_parser(mode: str, source: str) -> dict[str, Any]:
@@ -60,7 +127,7 @@ def _run_parser(mode: str, source: str) -> dict[str, Any]:
 
     if proc.returncode != 0:
         message = proc.stderr.strip() or proc.stdout.strip() or "unknown parser failure"
-        raise ValueError(message)
+        raise SpySyntaxError(message)
 
     return json.loads(proc.stdout)
 
@@ -86,7 +153,13 @@ def _module_path_for(source_dir: Path) -> Path:
 def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:
     kind = data["type"]
     if kind == "Import":
-        return ast.Import(names=[ast.alias(name=item["name"], asname=None) for item in data["names"]])
+        return ast.Import(names=[_alias_from_json(item) for item in data["names"]])
+    if kind == "ImportFrom":
+        return ast.ImportFrom(
+            module=data["module"] or None,
+            names=[_alias_from_json(item) for item in data["names"]],
+            level=data.get("level", 0),
+        )
     if kind == "Expr":
         return ast.Expr(value=_expr_from_json(data["value"]))
     if kind == "Assign":
@@ -145,7 +218,7 @@ def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:
         )
         _set_optional_field(node, "type_params", [])
         return node
-    raise ValueError(f"unsupported statement type: {kind}")
+    raise SpySyntaxError(f"unsupported statement type: {kind}")
 
 
 def _expr_from_json(data: dict[str, Any]) -> ast.expr:
@@ -189,7 +262,11 @@ def _expr_from_json(data: dict[str, Any]) -> ast.expr:
             subject=_expr_from_json(data["subject"]),
             cases=[_case_from_json(item) for item in data["cases"]],
         )
-    raise ValueError(f"unsupported expression type: {kind}")
+    raise SpySyntaxError(f"unsupported expression type: {kind}")
+
+
+def _alias_from_json(data: dict[str, Any]) -> ast.alias:
+    return ast.alias(name=data["name"], asname=data.get("asname"))
 
 
 def _pattern_from_json(data: dict[str, Any]) -> ast.pattern:
@@ -199,14 +276,14 @@ def _pattern_from_json(data: dict[str, Any]) -> ast.pattern:
     if kind == "MatchValue":
         value = _expr_from_json(data["value"])
         if not isinstance(value, ast.Constant):
-            raise ValueError("MatchValue must contain Constant")
+            raise SpySyntaxError("MatchValue must contain Constant")
         return ast.MatchValue(value=value)
-    raise ValueError(f"unsupported pattern type: {kind}")
+    raise SpySyntaxError(f"unsupported pattern type: {kind}")
 
 
 def _case_from_json(data: dict[str, Any]) -> ast.match_case:
     if data["type"] != "match_case":
-        raise ValueError(f"unsupported case type: {data['type']}")
+        raise SpySyntaxError(f"unsupported case type: {data['type']}")
     return ast.match_case(
         pattern=_pattern_from_json(data["pattern"]),
         guard=None,

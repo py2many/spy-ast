@@ -25,7 +25,7 @@ import zipfile
 
 
 NAME = "spy-ast"
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 ROOT = pathlib.Path(__file__).resolve().parent
 PACKAGE_DIR = ROOT / "spy_ast"
 VSRC_DIR = ROOT

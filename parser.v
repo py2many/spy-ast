@@ -10,8 +10,13 @@ enum TokenKind {
 	ident
 	int_lit
 	string_lit
+	kw_true
+	kw_false
+	kw_none
 	kw_match
 	kw_import
+	kw_from
+	kw_as
 	kw_if
 	kw_else
 	kw_elif
@@ -60,12 +65,14 @@ struct Token {
 
 pub type Expr = AttributeExpr
 	| BinaryExpr
+	| BoolExpr
 	| BoolOpExpr
 	| CallExpr
 	| CompareExpr
 	| IntExpr
 	| MatchExpr
 	| NameExpr
+	| NoneExpr
 	| StringExpr
 	| SubscriptExpr
 	| UnaryExpr
@@ -81,6 +88,7 @@ pub type Stmt = AssignStmt
 	| FunctionDefStmt
 	| IfStmt
 	| ImportStmt
+	| ImportFromStmt
 	| PassStmt
 	| ReturnStmt
 	| WhileStmt
@@ -94,6 +102,13 @@ pub struct StringExpr {
 pub:
 	value string
 }
+
+pub struct BoolExpr {
+pub:
+	value bool
+}
+
+pub struct NoneExpr {}
 
 pub struct NameExpr {
 pub:
@@ -228,12 +243,20 @@ pub:
 
 pub struct ImportAlias {
 pub:
-	name string
+	name   string
+	asname string
 }
 
 pub struct ImportStmt {
 pub:
 	names []ImportAlias
+}
+
+pub struct ImportFromStmt {
+pub:
+	module string
+	level  int
+	names  []ImportAlias
 }
 
 pub struct Module {
@@ -503,6 +526,24 @@ fn (mut l Lexer) next_token() !Token {
 
 fn keyword_or_ident(text string) Token {
 	return match text {
+		'True' {
+			Token{
+				kind: .kw_true
+				text: text
+			}
+		}
+		'False' {
+			Token{
+				kind: .kw_false
+				text: text
+			}
+		}
+		'None' {
+			Token{
+				kind: .kw_none
+				text: text
+			}
+		}
 		'match' {
 			Token{
 				kind: .kw_match
@@ -512,6 +553,18 @@ fn keyword_or_ident(text string) Token {
 		'import' {
 			Token{
 				kind: .kw_import
+				text: text
+			}
+		}
+		'from' {
+			Token{
+				kind: .kw_from
+				text: text
+			}
+		}
+		'as' {
+			Token{
+				kind: .kw_as
 				text: text
 			}
 		}
@@ -808,92 +861,39 @@ fn (mut p Parser) parse_module() !Module {
 	}
 }
 
+// parse_stmt is strict: anything outside the supported subset is an error.
+// Callers that need full Python coverage should fall back to the standard
+// library parser instead of silently degrading (e.g. to PassStmt), so a
+// successful parse always means a faithful tree.
 fn (mut p Parser) parse_stmt() !Stmt {
 	return match p.curr.kind {
 		.kw_if {
-			p.parse_if_stmt() or { p.parse_unknown_stmt() }
+			p.parse_if_stmt()
 		}
 		.kw_while {
-			p.parse_while_stmt() or { p.parse_unknown_stmt() }
+			p.parse_while_stmt()
 		}
 		.kw_for {
-			p.parse_for_stmt() or { p.parse_unknown_stmt() }
+			p.parse_for_stmt()
 		}
 		.kw_def {
-			p.parse_function_def() or { p.parse_unknown_stmt() }
+			p.parse_function_def()
 		}
 		.kw_class {
-			p.parse_class_def() or { p.parse_unknown_stmt() }
+			p.parse_class_def()
 		}
 		else {
-			stmt := p.parse_simple_stmt() or { p.parse_unknown_stmt() }
+			stmt := p.parse_simple_stmt()!
 			if p.skip_stmt_newline {
 				p.skip_stmt_newline = false
 			} else if p.curr.kind == .newline {
 				p.expect(.newline)!
 			} else {
-				p.consume_to_stmt_end()
-				return PassStmt{}
+				return error('expected newline after statement, found ${p.curr.kind}')
 			}
 			stmt
 		}
 	}
-}
-
-fn (mut p Parser) parse_unknown_stmt() Stmt {
-	mut depth := 0
-	mut starts_block := false
-
-	for p.curr.kind != .newline && p.curr.kind != .eof {
-		if is_opening_delim(p.curr.kind) {
-			depth++
-		} else if is_closing_delim(p.curr.kind) && depth > 0 {
-			depth--
-		} else if p.curr.kind == .colon && depth == 0 {
-			starts_block = true
-		}
-		p.advance() or { break }
-	}
-
-	if p.curr.kind == .newline {
-		p.advance() or { return PassStmt{} }
-	}
-
-	if starts_block && p.curr.kind == .indent {
-		mut level := 0
-		for p.curr.kind != .eof {
-			if p.curr.kind == .indent {
-				level++
-			} else if p.curr.kind == .dedent {
-				level--
-				if level == 0 {
-					p.advance() or { break }
-					break
-				}
-			}
-			p.advance() or { break }
-		}
-	}
-
-	p.skip_stmt_newline = true
-	return PassStmt{}
-}
-
-fn (mut p Parser) consume_to_stmt_end() {
-	for p.curr.kind != .newline && p.curr.kind != .eof {
-		p.advance() or { break }
-	}
-	if p.curr.kind == .newline {
-		p.advance() or {}
-	}
-}
-
-fn is_opening_delim(kind TokenKind) bool {
-	return kind == .lparen || kind == .lbracket || kind == .lbrace
-}
-
-fn is_closing_delim(kind TokenKind) bool {
-	return kind == .rparen || kind == .rbracket || kind == .rbrace
 }
 
 fn (mut p Parser) parse_if_stmt() !Stmt {
@@ -1046,7 +1046,7 @@ fn (mut p Parser) parse_suite() ![]Stmt {
 }
 
 fn (mut p Parser) parse_simple_stmt() !Stmt {
-	if p.curr.kind == .kw_import {
+	if p.curr.kind == .kw_import || p.curr.kind == .kw_from {
 		return p.parse_import_stmt()
 	}
 	if p.curr.kind == .kw_pass {
@@ -1090,19 +1090,80 @@ fn (mut p Parser) parse_simple_stmt() !Stmt {
 }
 
 fn (mut p Parser) parse_import_stmt() !Stmt {
+	if p.curr.kind == .kw_from {
+		return p.parse_import_from_stmt()
+	}
 	p.expect(.kw_import)!
 	mut names := []ImportAlias{}
-	names << ImportAlias{
-		name: p.parse_dotted_name()!
-	}
+	names << p.parse_import_alias()!
 	for p.curr.kind == .comma {
 		p.advance()!
-		names << ImportAlias{
-			name: p.parse_dotted_name()!
-		}
+		names << p.parse_import_alias()!
 	}
 	return ImportStmt{
 		names: names
+	}
+}
+
+fn (mut p Parser) parse_import_alias() !ImportAlias {
+	mut name := ''
+	if p.curr.kind == .star {
+		name = '*'
+		p.advance()!
+	} else {
+		name = p.parse_dotted_name()!
+	}
+	mut asname := ''
+	if p.curr.kind == .kw_as {
+		p.advance()!
+		if p.curr.kind != .ident {
+			return error('expected name after as in import')
+		}
+		asname = p.curr.text
+		p.advance()!
+	}
+	return ImportAlias{
+		name:   name
+		asname: asname
+	}
+}
+
+fn (mut p Parser) parse_import_from_stmt() !Stmt {
+	p.expect(.kw_from)!
+	mut level := 0
+	for p.curr.kind == .dot {
+		level++
+		p.advance()!
+	}
+	mut mod_name := ''
+	if p.curr.kind == .ident {
+		mod_name = p.parse_dotted_name()!
+	}
+	p.expect(.kw_import)!
+	mut parenthesized := false
+	if p.curr.kind == .lparen {
+		parenthesized = true
+		p.advance()!
+	}
+	mut names := []ImportAlias{}
+	names << p.parse_import_alias()!
+	for p.curr.kind == .comma {
+		p.advance()!
+		if parenthesized && p.curr.kind == .rparen {
+			break
+		}
+		if p.curr.kind == .newline {
+			return error('expected import name, found newline')
+		}
+		names << p.parse_import_alias()!
+	}
+	if parenthesized {
+		p.expect(.rparen)!
+	}
+	return ImportFromStmt{
+		module: mod_name
+		level:  level
+		names:  names
 	}
 }
 
@@ -1329,10 +1390,35 @@ fn (mut p Parser) parse_primary() !Expr {
 		}
 		.ident {
 			name := p.curr.text
+			if is_reserved_name(name) {
+				return error('unsupported keyword "${name}" outside the supported subset')
+			}
 			p.advance()!
 			NameExpr{
 				name: name
 			}
+		}
+		.underscore {
+			p.advance()!
+			NameExpr{
+				name: '_'
+			}
+		}
+		.kw_true {
+			p.advance()!
+			BoolExpr{
+				value: true
+			}
+		}
+		.kw_false {
+			p.advance()!
+			BoolExpr{
+				value: false
+			}
+		}
+		.kw_none {
+			p.advance()!
+			NoneExpr{}
 		}
 		.lparen {
 			p.advance()!
@@ -1342,6 +1428,21 @@ fn (mut p Parser) parse_primary() !Expr {
 		}
 		else {
 			return error('expected expression, found ${p.curr.kind}')
+		}
+	}
+}
+
+// is_reserved_name reports hard Python keywords the subset parser does not
+// implement. They can never be identifiers, so encountering one where an
+// expression is expected is always an honest rejection instead of a
+// misparsed Name node (e.g. bare `raise` or `x = yield`).
+fn is_reserved_name(text string) bool {
+	return match text {
+		'assert', 'async', 'await', 'del', 'except', 'finally', 'global', 'lambda', 'nonlocal', 'raise', 'try', 'with', 'yield' {
+			true
+		}
+		else {
+			false
 		}
 	}
 }
@@ -1421,6 +1522,9 @@ fn (mut p Parser) parse_pattern() !Pattern {
 		}
 		.ident {
 			name := p.curr.text
+			if is_reserved_name(name) {
+				return error('unsupported keyword "${name}" outside the supported subset')
+			}
 			p.advance()!
 			BindPattern{
 				name: name
@@ -1476,6 +1580,13 @@ fn expr_json(expr Expr) string {
 		}
 		StringExpr {
 			'{"type":"Constant","value":"${json_escape(expr.value)}"}'
+		}
+		BoolExpr {
+			val := if expr.value { 'true' } else { 'false' }
+			'{"type":"Constant","value":${val}}'
+		}
+		NoneExpr {
+			'{"type":"Constant","value":null}'
 		}
 		NameExpr {
 			'{"type":"Name","id":"${json_escape(expr.name)}"}'
@@ -1535,6 +1646,13 @@ fn pattern_json(pattern Pattern) string {
 	}
 }
 
+fn alias_json(alias ImportAlias) string {
+	if alias.asname == '' {
+		return '{"type":"alias","name":"${json_escape(alias.name)}","asname":null}'
+	}
+	return '{"type":"alias","name":"${json_escape(alias.name)}","asname":"${json_escape(alias.asname)}"}'
+}
+
 fn stmt_json(stmt Stmt) string {
 	return match stmt {
 		ExprStmt {
@@ -1543,9 +1661,16 @@ fn stmt_json(stmt Stmt) string {
 		ImportStmt {
 			mut names_json := []string{}
 			for n in stmt.names {
-				names_json << '{"type":"alias","name":"${json_escape(n.name)}"}'
+				names_json << alias_json(n)
 			}
 			'{"type":"Import","names":[${names_json.join(',')}]} '
+		}
+		ImportFromStmt {
+			mut names_json := []string{}
+			for n in stmt.names {
+				names_json << alias_json(n)
+			}
+			'{"type":"ImportFrom","module":"${json_escape(stmt.module)}","level":${stmt.level},"names":[${names_json.join(',')}]} '
 		}
 		AssignStmt {
 			'{"type":"Assign","target":"${json_escape(stmt.target)}","value":${expr_json(stmt.value)}}'

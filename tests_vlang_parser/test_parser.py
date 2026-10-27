@@ -105,11 +105,33 @@ def test_brace_style_match_is_rejected() -> None:
         parse_expression("match x { 1: 10, _: 0 }")
 
 
-def test_parse_repository_test_py_module() -> None:
+def test_full_python_module_is_rejected() -> None:
+    # jpeg_parser.py uses full Python (decorators, annotations, keyword
+    # arguments, ...), which is outside the V parser's strict subset.
+    # Rejection is deliberate: spy-ast never falls back to builtin ast, so
+    # unsupported input fails loudly instead of degrading the tree.
+    import spy_ast
+    from spy_ast.wrapper import SpySyntaxError
+
     source = Path(__file__).resolve().parents[1] / "examples" / "jpeg_parser.py"
-    parsed = parse_module(source.read_text())
-    assert isinstance(parsed, ast.Module)
-    assert len(parsed.body) > 0
+    with pytest.raises(SpySyntaxError):
+        spy_ast.parse(source.read_text())
+
+
+def test_v_parser_rejects_unsupported_statements() -> None:
+    # The V parser is strict: anything outside its subset is an error rather
+    # than a silently degraded tree.
+    # Plain, aliased, relative, and parenthesized import-from are supported
+    # (see test_builtin_ast_compat.py); everything else outside the subset
+    # must fail loudly instead of degrading to Pass.
+    for source in [
+        "try:\n    pass\nexcept ValueError:\n    pass\n",
+        "with open('f') as f:\n    pass\n",
+        "@decorator\ndef f():\n    pass\n",
+        "x: int = 1\n",
+    ]:
+        with pytest.raises(ValueError):
+            parse_module(source)
 
 
 def test_parse_nested_match_variant_module() -> None:
