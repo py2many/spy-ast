@@ -17,7 +17,15 @@ jobs:
         fetch-depth: 0
         fetch-tags: true
     - name: Set up V
-      uses: vlang/setup-v@v1
+      shell: bash
+      env:
+        V_VERSION: "0.5.1"
+      run: |
+        url="https://github.com/vlang/v/releases/download/${V_VERSION}/v_linux.zip"
+        curl -fsSL "$url" -o "$RUNNER_TEMP/v.zip"
+        unzip -q "$RUNNER_TEMP/v.zip" -d "$RUNNER_TEMP/vlang"
+        echo "$RUNNER_TEMP/vlang/v" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/vlang/v/v" version
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
