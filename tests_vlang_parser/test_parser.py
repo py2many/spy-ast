@@ -139,3 +139,66 @@ def test_parse_nested_match_variant_module() -> None:
     parsed = parse_module(source.read_text())
     dumped = ast.dump(parsed)
     assert dumped.count("Match(subject=") >= 3
+
+
+def test_parenthesized_match_expression() -> None:
+    source = (
+        "def f(x: int) -> str:\n"
+        "    return (match x:\n"
+        '        1: "a"\n'
+        '        _: "b"\n'
+        "    )\n"
+    )
+    parsed = parse_module(source)
+    dumped = ast.dump(parsed)
+    assert "Match(subject=Name(id='x', ctx=Load())" in dumped
+    assert "match_case(pattern=MatchValue(value=Constant(value=1))" in dumped
+    assert "MatchAs()" in dumped
+
+
+def test_parenthesized_match_closing_paren_alignments() -> None:
+    # `)` on the last body line and on its own line at the arm indent
+    # both terminate the match.
+    for tail in (')\n', '\n        )\n'):
+        source = (
+            "def f(x: int) -> str:\n"
+            "    return (match x:\n"
+            '        1: "a"\n'
+            f'        _: "b"{tail}'
+        )
+        parsed = parse_module(source)
+        assert isinstance(parsed.body[0].body[0].value, ast.Match)
+
+
+def test_parenthesized_match_nested() -> None:
+    source = (
+        "def f(a: int, b: int) -> str:\n"
+        "    return (match a:\n"
+        "        1: (match b:\n"
+        '            2: "x"\n'
+        '            _: "y")\n'
+        '        _: "z")\n'
+    )
+    parsed = parse_module(source)
+    dumped = ast.dump(parsed)
+    assert dumped.count("Match(subject=") == 2
+
+
+def test_parenthesized_match_subject() -> None:
+    source = (
+        "x = match (match y:\n"
+        "        1: 2\n"
+        "        _: 3):\n"
+        "    4: 5\n"
+        "    _: 6\n"
+    )
+    parsed = parse_module(source)
+    dumped = ast.dump(parsed)
+    assert dumped.count("Match(subject=") == 2
+
+
+def test_match_subject_must_be_parenthesized() -> None:
+    # `match match x: ... :` cannot work: closing the inner match requires a
+    # dedent, which cannot land on a fresh (outer arm) indent level.
+    with pytest.raises(ValueError):
+        parse_module("x = match match y:\n    1: 2\n    _: 3:\n    4: 5\n    _: 6\n")

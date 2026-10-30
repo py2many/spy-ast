@@ -124,3 +124,22 @@ That source is not valid Python, so `ast.parse` cannot produce a comparable
 built-in AST. In cases like this, `spy-ast` still reuses familiar built-in AST
 node shapes where practical, but compatibility with `ast` only applies to the
 Python-compatible subset.
+
+Match expressions nest: an arm body may itself be a match, and a match may
+be used as another match's subject when parenthesized. A match may also be
+wrapped in parentheses, with its arms laid out on following lines:
+
+```python
+value = (
+    match x:
+        1: match y:
+            2: "a"
+            _: "b"
+        _: "c"
+)
+```
+
+The closing paren may sit at the enclosing indent or at/below the arm
+indent. An unparenthesized match used directly as a subject (`match match
+x: ... :`) is rejected: closing the inner match requires a dedent, which
+cannot land on a fresh indent level. Parenthesize the subject instead.

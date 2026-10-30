@@ -850,6 +850,22 @@ mut:
 	brace_depth   int
 	line_starts   []int
 	tok_start     int
+	// paren_layout_depth gates layout tokens (newlines, indents, dedents)
+	// inside brackets while a parenthesized match expression is open.
+	// -1 means inactive; otherwise newlines/indents are significant exactly
+	// at that bracket depth, so deeper bracketed constructs keep swallowing
+	// newlines as usual.
+	paren_layout_depth int = -1
+}
+
+// layout_active reports whether indentation-sensitive tokens are produced
+// at the current position: always at bracket depth zero, and inside
+// brackets while a parenthesized match expression is open at this depth.
+fn (l Lexer) layout_active() bool {
+	if l.brace_depth == 0 {
+		return true
+	}
+	return l.paren_layout_depth >= 0 && l.brace_depth == l.paren_layout_depth
 }
 
 // lookup_pos maps a byte offset to a 1-based line and 0-based column.
@@ -929,7 +945,7 @@ fn (mut l Lexer) next_token_inner() !Token {
 				text: ''
 			}
 		}
-		if l.at_line_start && l.brace_depth == 0 {
+		if l.at_line_start && l.layout_active() {
 			l.handle_indentation()!
 			if l.pending.len > 0 {
 				continue
@@ -950,7 +966,7 @@ fn (mut l Lexer) next_token_inner() !Token {
 		}
 		if ch == `\n` {
 			l.pos++
-			if l.brace_depth > 0 {
+			if !l.layout_active() {
 				continue
 			}
 			l.at_line_start = true
@@ -1473,7 +1489,7 @@ fn keyword_or_ident(text string) Token {
 }
 
 fn (mut l Lexer) handle_indentation() ! {
-	if l.brace_depth > 0 {
+	if !l.layout_active() {
 		return
 	}
 	mut i := l.pos
@@ -2430,6 +2446,10 @@ mut:
 	next              Token
 	prev_real         Token
 	skip_stmt_newline bool
+	// match_rparen_terminated is set by parse_indented_match_cases when a
+	// parenthesized match is closed by `)` instead of a dedent. The paren
+	// path consumes it to pop unclosed layout levels.
+	match_rparen_terminated bool
 }
 
 fn new_parser(source string) !Parser {
@@ -4076,11 +4096,13 @@ mut:
 	indent_stack  []int
 	pending       []Token
 	skip_newline  bool
+	paren_layout_depth int
 }
 
 fn (mut p Parser) save_state() ParserState {
 	return ParserState{
 		pos:           p.lexer.pos
+		paren_layout_depth: p.lexer.paren_layout_depth
 		curr:          p.curr
 		next:          p.next
 		at_line_start: p.lexer.at_line_start
@@ -4100,6 +4122,7 @@ fn (mut p Parser) restore_state(s ParserState) {
 	p.lexer.indent_stack = s.indent_stack.clone()
 	p.lexer.pending = s.pending.clone()
 	p.skip_stmt_newline = s.skip_newline
+	p.lexer.paren_layout_depth = s.paren_layout_depth
 }
 
 // is_name_token reports tokens usable where Python allows a plain name.
@@ -4433,6 +4456,9 @@ fn expr_end_pos(e Expr) (int, int) {
 fn (mut p Parser) parse_paren_expr() !Expr {
 	start := p.curr
 	p.expect(.lparen)!
+	if p.curr.kind == .kw_match {
+		return p.parse_paren_match_expr()
+	}
 	if p.curr.kind == .rparen {
 		p.advance()!
 		return TupleExpr{
@@ -4817,6 +4843,44 @@ fn (mut p Parser) parse_fstring_expr() !Expr {
 	}
 }
 
+// parse_paren_match_expr parses a parenthesized match expression, e.g.
+// `return (match op: ...)`.
+// Layout tokens are significant inside the parens for the duration of the
+// match (see Lexer.paren_layout_depth); arm bodies with deeper brackets
+// keep swallowing newlines as usual. The closing paren may sit at the
+// enclosing indent (normal dedent termination), or at/below the arm indent
+// (rparen termination, with unclosed layout levels popped below).
+// Produces the same MatchExpr node as the unparenthesized form.
+fn (mut p Parser) parse_paren_match_expr() !Expr {
+	prev_layout := p.lexer.paren_layout_depth
+	// NB: p.next is already lexed here; if it opened a bracket (e.g. the
+	// inner paren of `(match (match ...`), brace_depth includes it.
+	mut entry := p.lexer.brace_depth
+	if p.next.kind == .lparen || p.next.kind == .lbracket || p.next.kind == .lbrace {
+		entry--
+	}
+	p.lexer.paren_layout_depth = entry
+	base_indent := p.lexer.indent_stack.len
+	m := p.parse_match_expr() or {
+		p.lexer.paren_layout_depth = prev_layout
+		return err
+	}
+	if p.match_rparen_terminated {
+		p.match_rparen_terminated = false
+		if p.lexer.indent_stack.len > base_indent {
+			p.lexer.indent_stack = p.lexer.indent_stack[..base_indent]
+		}
+	}
+	p.lexer.paren_layout_depth = prev_layout
+	p.expect(.rparen)!
+	// A layout newline may already have been lexed as lookahead while the
+	// layout was active; at bracket depth newlines never occur normally.
+	for p.curr.kind == .newline && p.lexer.brace_depth > 0 {
+		p.advance()!
+	}
+	return m
+}
+
 fn (mut p Parser) parse_match_expr() !Expr {
 	p.expect(.kw_match)!
 	subject := p.parse_expr()!
@@ -4828,6 +4892,9 @@ fn (mut p Parser) parse_match_expr() !Expr {
 
 fn (mut p Parser) parse_indented_match_cases(subject Expr) !Expr {
 	start := p.curr
+	// A nested match used as our subject leaves skip_stmt_newline set;
+	// our own colon starts fresh layout, so clear it.
+	p.skip_stmt_newline = false
 	p.expect(.colon)!
 	p.expect(.newline)!
 	p.expect(.indent)!
@@ -4850,7 +4917,13 @@ fn (mut p Parser) parse_indented_match_cases(subject Expr) !Expr {
 	if cases.len == 0 {
 		return error('indented match expression needs at least one case')
 	}
-	p.expect(.dedent)!
+	if p.curr.kind == .rparen && p.lexer.paren_layout_depth >= 0 {
+		// The paren closed on/below the arm indent (`_: "b")`): it doubles
+		// as our terminator. The paren path pops unclosed layout levels.
+		p.match_rparen_terminated = true
+	} else {
+		p.expect(.dedent)!
+	}
 	p.skip_stmt_newline = true
 	return MatchExpr{
 		line: start.line,
@@ -4881,7 +4954,14 @@ fn (mut p Parser) parse_match_case_body() !Expr {
 	if p.skip_stmt_newline {
 		p.skip_stmt_newline = false
 	} else {
-		p.expect(.newline)!
+		mut need_newline := true
+		if p.curr.kind == .rparen && p.lexer.paren_layout_depth >= 0 {
+			// Parenthesized match closed on the body line (`_: "b")`).
+			need_newline = false
+		}
+		if need_newline {
+			p.expect(.newline)!
+		}
 	}
 	return body
 }
