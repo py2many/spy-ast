@@ -25,7 +25,7 @@ import zipfile
 
 
 NAME = "spy-ast"
-VERSION = "0.1.4"
+VERSION = "0.1.5"
 ROOT = pathlib.Path(__file__).resolve().parent
 PACKAGE_DIR = ROOT / "spy_ast"
 VSRC_DIR = ROOT
@@ -99,7 +99,14 @@ def _record_line(path: str, data: bytes) -> tuple[str, str, str]:
 def _run_checked(cmd: list[str], cwd: pathlib.Path | None = None) -> None:
     proc = subprocess.run(cmd, cwd=cwd, check=False, text=True, capture_output=True)
     if proc.returncode != 0:
-        message = proc.stderr.strip() or proc.stdout.strip() or "command failed"
+        out = (proc.stdout or "").strip()
+        err = (proc.stderr or "").strip()
+        # V prints the real C compiler error to stdout, with only
+        # "builder error:" on stderr. Include both, tail-capped.
+        combined = "\n".join(s for s in (err, out) if s)
+        if len(combined) > 8000:
+            combined = combined[-8000:]
+        message = combined or "command failed"
         rendered = " ".join(shlex.quote(x) for x in cmd)
         raise RuntimeError(f"{rendered}: {message}")
 
