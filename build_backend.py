@@ -25,7 +25,7 @@ import zipfile
 
 
 NAME = "spy-ast"
-VERSION = "0.1.6"
+VERSION = "0.1.7"
 ROOT = pathlib.Path(__file__).resolve().parent
 PACKAGE_DIR = ROOT / "spy_ast"
 VSRC_DIR = ROOT
@@ -186,16 +186,15 @@ def _vflags_for_native() -> list[str]:
     ``-d no_backtrace`` avoids the TCC runtime entirely. Only applied on
     Linux and only if the caller did not already select a compiler.
 
-    On macOS the downloaded V distribution (v_macos_arm64.zip) links via
-    its bundled TCC by default, producing binaries with
-    ``@rpath/libgc.dylib`` and ``LC_RPATH /Users/runner/work/_temp/vlang/v/``
-    baked in. That path only exists on the CI builder, so every 0.1.5
-    macOS wheel fails at runtime with ``dyld: Library not loaded:
+    On macOS the downloaded V distribution (v_macos_arm64.zip) links
+    ``-lgc`` against its own bundled ``thirdparty/tcc/lib`` with an
+    absolute ``LC_RPATH`` pointing at the build machine, so 0.1.5 macOS
+    wheels failed off the CI builder with ``dyld: Library not loaded:
     @rpath/libgc.dylib`` (py2many ``-k rust``: 43 failures). Forcing
-    ``-cc clang`` links the system/bundled libgc statically (as the
-    Homebrew V does locally) and yields a standalone binary with only a
-    libSystem dependency. Only applied on macOS when the caller did not
-    already select a compiler."""
+    ``-cc clang`` keeps the toolchain consistent; standalone-ness is then
+    enforced by vendoring any remaining non-system dylibs into the wheel
+    (see :func:`_bundle_macos_libraries`). Only applied on macOS when the
+    caller did not already select a compiler."""
     flags = _vflags()
     if sys.platform.startswith("linux"):
         if not any(f == "-cc" or f.startswith("-cc=") for f in flags):
@@ -213,33 +212,225 @@ def _assert_macos_standalone(path: pathlib.Path) -> None:
 
     The 0.1.5 macOS wheels shipped binaries with
     ``@rpath/libgc.dylib`` + ``LC_RPATH .../work/_temp/vlang/...`` which
-    only exists on the GitHub Actions builder. Catch that here so a broken
-    wheel never reaches PyPI. ``otool`` is always present on macOS
-    builders; a missing tool is a no-op."""
+    only exists on the GitHub Actions builder. Runs after
+    :func:`_bundle_macos_libraries`; anything still referencing ``@rpath``
+    or a builder-temp ``LC_RPATH`` is a hard error so a broken wheel never
+    reaches PyPI."""
     if sys.platform != "darwin":
         return
-    otool = shutil.which("otool")
-    if otool is None:
-        return
+    own_id = _otool_install_id(path)
+    for dep in _otool_linked_libs(path):
+        if dep == own_id:
+            continue
+        if dep.startswith("@rpath/"):
+            raise RuntimeError(
+                f"{path.name}: unvendored dependency {dep}; "
+                "_bundle_macos_libraries should have rewritten it"
+            )
+    for rpath in _otool_rpaths(path):
+        if _is_builder_temp_path(rpath):
+            raise RuntimeError(
+                f"{path.name}: LC_RPATH points at builder temp dir ({rpath}); "
+                "_bundle_macos_libraries should have removed it"
+            )
+
+
+_MACOS_TEMP_PATH_MARKERS = (
+    "/Users/runner",
+    "_temp/vlang",
+    "/tmp/",
+    "/var/folders",
+    "/private/tmp",
+    "/private/var",
+)
+
+
+def _is_builder_temp_path(path: str) -> bool:
+    return any(marker in path for marker in _MACOS_TEMP_PATH_MARKERS)
+
+
+def _otool_linked_libs(path: pathlib.Path) -> list[str]:
+    """Parse ``otool -L`` into the list of recorded dependency paths."""
     proc = subprocess.run(
-        [otool, "-L", str(path)], check=False, text=True, capture_output=True
+        ["otool", "-L", str(path)], check=False, text=True, capture_output=True
     )
     if proc.returncode != 0:
-        return
-    output = proc.stdout
-    if "@rpath/libgc.dylib" in output:
-        raise RuntimeError(
-            f"{path.name}: links @rpath/libgc.dylib; "
-            "build with -cc clang for a static libgc"
-        )
-    rproc = subprocess.run(
-        [otool, "-l", str(path)], check=False, text=True, capture_output=True
+        raise RuntimeError(f"otool -L {path.name} failed: {proc.stderr.strip()}")
+    libs: list[str] = []
+    for line in proc.stdout.splitlines()[1:]:
+        line = line.strip()
+        if line:
+            libs.append(line.split()[0])
+    return libs
+
+
+def _otool_rpaths(path: pathlib.Path) -> list[str]:
+    """Parse ``otool -l`` into the list of LC_RPATH entries."""
+    proc = subprocess.run(
+        ["otool", "-l", str(path)], check=False, text=True, capture_output=True
     )
-    if rproc.returncode == 0 and ("/Users/runner" in rproc.stdout or "_temp/vlang" in rproc.stdout):
+    if proc.returncode != 0:
+        raise RuntimeError(f"otool -l {path.name} failed: {proc.stderr.strip()}")
+    rpaths: list[str] = []
+    in_rpath = False
+    for line in proc.stdout.splitlines():
+        stripped = line.strip()
+        if stripped == "cmd LC_RPATH":
+            in_rpath = True
+        elif stripped.startswith("cmd "):
+            in_rpath = False
+        elif in_rpath and stripped.startswith("path "):
+            rpaths.append(stripped[5:].split(" (offset")[0])
+    return rpaths
+
+
+def _needs_vendoring(dep: str) -> bool:
+    """True for dynamic deps that won't exist on a user's machine."""
+    if dep.startswith(("/usr/lib/", "/System/")):
+        return False
+    if dep.startswith("@rpath/"):
+        return True
+    # Absolute references outside the OS (e.g. /opt/homebrew/...dylib from
+    # a -d dynamic_boehm build) break the same way off-machine.
+    return dep.startswith("/")
+
+
+def _otool_install_id(path: pathlib.Path) -> str | None:
+    """Return a dylib's own LC_ID install name, or None for executables."""
+    proc = subprocess.run(
+        ["otool", "-D", str(path)], check=False, text=True, capture_output=True
+    )
+    if proc.returncode != 0:
+        return None
+    lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    if len(lines) >= 2:
+        return lines[-1]
+    return None
+
+
+def _resolve_macos_dep(dep: str, rpaths: list[str]) -> pathlib.Path:
+    if dep.startswith("@rpath/"):
+        rel = dep[len("@rpath/"):]
+        for rpath in rpaths:
+            candidate = pathlib.Path(rpath) / rel
+            if candidate.is_file():
+                return candidate.resolve()
         raise RuntimeError(
-            f"{path.name}: LC_RPATH points at CI builder temp dir; "
-            "build with -cc clang for a standalone binary"
+            f"cannot resolve {dep}; searched LC_RPATHs: {rpaths or ['(none)']}"
         )
+    candidate = pathlib.Path(dep)
+    if candidate.is_file():
+        return candidate.resolve()
+    raise RuntimeError(f"cannot resolve absolute dependency {dep}: file not found")
+
+
+def _bundle_macos_libraries(entries: dict[str, bytes]) -> dict[str, bytes]:
+    """Vendor non-system dylibs into the wheel (delocate-style).
+
+    Upstream V links ``-lgc`` against its own ``thirdparty/tcc/lib`` with
+    an absolute builder-only ``LC_RPATH`` (verified on 0.5.1 and 0.5.2),
+    so without this step every macOS wheel dies off-builder with ``dyld:
+    Library not loaded: @rpath/libgc.dylib``. Each needed library is
+    copied to ``spy_ast/_lib/``, consumers are rewritten to
+    ``@loader_path``-relative references, builder-temp ``LC_RPATH``s
+    are deleted, and modified files are ad-hoc re-signed.
+
+    Takes and returns ``{wheel arcname: file bytes}`` for the native
+    artifacts; vendored libraries come back as extra ``spy_ast/_lib/*``
+    entries. No-op when nothing needs vendoring (e.g. a Homebrew-V build
+    that already links libgc statically).
+    """
+    for tool in ("otool", "install_name_tool", "codesign"):
+        if shutil.which(tool) is None:
+            raise RuntimeError(f"{tool} is required to build macOS wheels")
+    package_prefix = f"{PACKAGE_DIR.name}/"
+    lib_dir_arc = f"{PACKAGE_DIR.name}/_lib"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        stage = pathlib.Path(tmpdir)
+        for arcname, data in entries.items():
+            target = stage / arcname
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        vendored: dict[str, str] = {}  # basename -> arcname under _lib
+        pending = [
+            stage / arcname
+            for arcname in entries
+            if (stage / arcname).is_file()
+        ]
+        while pending:
+            consumer = pending.pop()
+            own_id = _otool_install_id(consumer)
+            rpaths = _otool_rpaths(consumer)
+            for dep in _otool_linked_libs(consumer):
+                if dep == own_id or not _needs_vendoring(dep):
+                    continue
+                basename = dep.rsplit("/", 1)[-1]
+                if basename not in vendored:
+                    resolved = _resolve_macos_dep(dep, rpaths)
+                    dest = stage / lib_dir_arc / basename
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_bytes(resolved.read_bytes())
+                    try:
+                        dest.chmod(0o755)
+                    except OSError:
+                        pass
+                    vendored[basename] = f"{lib_dir_arc}/{basename}"
+                    pending.append(dest)
+        # Rewrite every staged Mach-O (artifacts + vendored libs).
+        staged_files = [path for path in stage.rglob("*") if path.is_file()]
+        for path in staged_files:
+            arcname = path.relative_to(stage).as_posix()
+            if not arcname.startswith(package_prefix):
+                continue
+            consumer_dir = pathlib.PurePosixPath(arcname).parent
+            own_id = _otool_install_id(path)
+            rpaths = _otool_rpaths(path)
+            changed = False
+            for dep in _otool_linked_libs(path):
+                if dep == own_id or not _needs_vendoring(dep):
+                    continue
+                basename = dep.rsplit("/", 1)[-1]
+                rel = os.path.relpath(
+                    f"{lib_dir_arc}/{basename}", start=str(consumer_dir)
+                )
+                _run_checked(
+                    ["install_name_tool", "-change", dep, f"@loader_path/{rel}", str(path)],
+                    cwd=ROOT,
+                )
+                changed = True
+            if path.parent == stage / lib_dir_arc:
+                _run_checked(
+                    ["install_name_tool", "-id", f"@loader_path/{path.name}", str(path)],
+                    cwd=ROOT,
+                )
+                changed = True
+            elif own_id is not None and (own_id.startswith("/") or own_id.startswith("@rpath/")):
+                # Normalize the shared library's own temp-build install name
+                # (e.g. /var/folders/.../libpyast_parser.dylib) so nothing
+                # references the builder filesystem. Nothing looks it up by
+                # id (_vext dlopens by absolute path), so any stable value works.
+                if _is_builder_temp_path(own_id) or own_id.startswith("/"):
+                    _run_checked(
+                        ["install_name_tool", "-id", f"@rpath/{path.name}", str(path)],
+                        cwd=ROOT,
+                    )
+                    changed = True
+            for rpath in rpaths:
+                if _is_builder_temp_path(rpath):
+                    _run_checked(
+                        ["install_name_tool", "-delete_rpath", rpath, str(path)],
+                        cwd=ROOT,
+                    )
+                    changed = True
+            if changed:
+                _run_checked(["codesign", "-s", "-", "-f", str(path)], cwd=ROOT)
+            _assert_macos_standalone(path)
+        result: dict[str, bytes] = {}
+        for path in staged_files:
+            arcname = path.relative_to(stage).as_posix()
+            if arcname.startswith(package_prefix):
+                result[arcname] = path.read_bytes()
+        return result
 
 
 def _build_shared_library() -> tuple[str, bytes]:
@@ -254,7 +445,6 @@ def _build_shared_library() -> tuple[str, bytes]:
         )
         _run_checked(cmd, cwd=ROOT)
         _assert_no_tcc_symbols(out)
-        _assert_macos_standalone(out)
         return libname, out.read_bytes()
 
 
@@ -269,7 +459,6 @@ def _build_binary() -> tuple[str, bytes]:
             temp_dir,
         )
         _run_checked(cmd, cwd=ROOT)
-        _assert_macos_standalone(out)
         _remove_gnu_property_note(out)
         return out.name, out.read_bytes()
 
@@ -420,6 +609,15 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
     lib_name, lib_data = _build_shared_library()
     bin_name, bin_data = _build_binary()
 
+    native_entries = {
+        f"{PACKAGE_DIR.name}/{lib_name}": lib_data,
+        f"{PACKAGE_DIR.name}/_bin/{bin_name}": bin_data,
+    }
+    if sys.platform == "darwin":
+        # Rewrite builder-only dynamic deps (e.g. V's @rpath/libgc.dylib)
+        # to vendored @loader_path copies; fails fast on regression.
+        native_entries = _bundle_macos_libraries(native_entries)
+
     rows: list[tuple[str, str, str]] = []
     with zipfile.ZipFile(wheel_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for py in sorted(PACKAGE_DIR.rglob("*.py")):
@@ -427,8 +625,8 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
             rows.append(_write_entry(zf, arcname, py.read_bytes(), 0o644))
 
         rows.append(_write_entry(zf, f"{PACKAGE_DIR.name}/{ext_name}", ext_data, 0o755))
-        rows.append(_write_entry(zf, f"{PACKAGE_DIR.name}/{lib_name}", lib_data, 0o755))
-        rows.append(_write_entry(zf, f"{PACKAGE_DIR.name}/_bin/{bin_name}", bin_data, 0o755))
+        for arcname in sorted(native_entries):
+            rows.append(_write_entry(zf, arcname, native_entries[arcname], 0o755))
 
         for src in sorted(VSRC_DIR.glob("*.v")):
             rows.append(
