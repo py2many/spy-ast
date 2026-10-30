@@ -143,3 +143,35 @@ The closing paren may sit at the enclosing indent or at/below the arm
 indent. An unparenthesized match used directly as a subject (`match match
 x: ... :`) is rejected: closing the inner match requires a dedent, which
 cannot land on a fresh indent level. Parenthesize the subject instead.
+
+Matches also work unparenthesized inside brackets (call arguments, list /
+set / dict displays, subscripts, conditions), terminating at `,`, `)`,
+`]` or `}`:
+
+```python
+label = str(match code:
+    43: "plus"
+    _: "other")
+```
+
+Arm bodies are single test-expressions (parenthesize tuple arms); a
+trailing comma always ends the match. Closers must not dedent past the
+enclosing statement's indent, and no blank line may follow the
+terminating comma while still inside brackets.
+
+A `match` in statement position is a match *statement*, desugared to an
+if/elif chain. Arms are full suites, so this is the way to write
+multi-statement dispatch:
+
+```python
+match code:
+    43: print("plus")
+    _: print("other")
+```
+
+Only int-literal patterns and `_` are supported (named captures, arms
+after `_`, and wildcard-only matches are rejected); a missing wildcard
+falls through like if/elif without else. Non-trivial subjects are
+evaluated once via a walrus temporary. Since `match` stays a soft
+keyword, non-match uses (`match = 5`, `match(x)`) keep parsing as
+before.

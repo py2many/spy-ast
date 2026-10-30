@@ -2450,6 +2450,19 @@ mut:
 	// parenthesized match is closed by `)` instead of a dedent. The paren
 	// path consumes it to pop unclosed layout levels.
 	match_rparen_terminated bool
+	// match_temp_id numbers the walrus temporaries that desugared match
+	// statements introduce for non-trivial subjects.
+	match_temp_id int
+	// match_stmt_boundary is set when a match ends on a layout boundary
+	// (dedent, outside brackets): its statement terminator is already
+	// consumed. parse_ifexp reads it to tell a following statement-`if`
+	// apart from a conditional expression. Matches closed by brackets
+	// clear it (mid-expression). parse_stmt clears it per statement.
+	match_stmt_boundary bool
+	// match_stmt_committed is set once a match statement has consumed its
+	// header (`match <subject>:` + newline + indent): from there, failures
+	// are real match errors, not fallbacks to simple statements.
+	match_stmt_committed bool
 }
 
 fn new_parser(source string) !Parser {
@@ -2492,8 +2505,38 @@ fn (mut p Parser) parse_module() !Module {
 // Callers that need full Python coverage should fall back to the standard
 // library parser instead of silently degrading (e.g. to PassStmt), so a
 // successful parse always means a faithful tree.
+// parse_simple_stmt_with_finish parses a non-compound statement plus
+// its terminator (the `else` branch of parse_stmt, factored for reuse).
+fn (mut p Parser) parse_simple_stmt_with_finish() !Stmt {
+	s := p.parse_simple_stmt()!
+	p.finish_simple_stmt()!
+	return s
+}
+
 fn (mut p Parser) parse_stmt() !Stmt {
+	// A match completed by an earlier statement leaves its flags set
+	// until its own finish runs; anything still set here is stale (e.g. a
+	// match used as an if/while test, whose suite follows). Clearing per
+	// statement keeps parse_ifexp above honest.
+	p.skip_stmt_newline = false
+	p.match_stmt_boundary = false
 	return match p.curr.kind {
+		.kw_match {
+			state := p.save_state()
+			p.match_stmt_committed = false
+			stmt := p.parse_match_stmt() or {
+				if p.match_stmt_committed {
+					// Past the header: this really is a match statement,
+					// so report its own error instead of falling back.
+					return err
+				}
+				// Not a match statement (`match` is a soft keyword: it can
+				// still be a variable, a call, ...). Restore and parse on.
+				p.restore_state(state)
+				return p.parse_simple_stmt_with_finish()
+			}
+			stmt
+		}
 		.kw_if {
 			p.parse_if_stmt()
 		}
@@ -2522,9 +2565,7 @@ fn (mut p Parser) parse_stmt() !Stmt {
 			p.parse_decorated()
 		}
 		else {
-			stmt := p.parse_simple_stmt()!
-			p.finish_simple_stmt()!
-			stmt
+			p.parse_simple_stmt_with_finish()
 		}
 	}
 }
@@ -3544,7 +3585,12 @@ fn (mut p Parser) parse_namedexpr() !Expr {
 fn (mut p Parser) parse_ifexp() !Expr {
 	start := p.curr
 	body := p.parse_or_expr()!
-	if p.curr.kind != .kw_if {
+	// A match that ended on a layout boundary (dedent, outside brackets)
+	// already consumed its statement terminator, so a following `if`
+	// starts a new statement instead of continuing a conditional
+	// expression. Matches closed by brackets clear the flag, so real
+	// conditionals (including `(match ...) if ... else ...`) still parse.
+	if p.curr.kind != .kw_if || p.match_stmt_boundary {
 		return body
 	}
 	p.advance()!
@@ -4883,15 +4929,45 @@ fn (mut p Parser) parse_paren_match_expr() !Expr {
 
 fn (mut p Parser) parse_match_expr() !Expr {
 	p.expect(.kw_match)!
-	subject := p.parse_expr()!
+	// Inside brackets, newlines are insignificant by default, so a match
+	// would never see its arm layout. Enable layout tokens for the match
+	// duration (mirrors parse_paren_match_expr, which manages its own
+	// depth; only one of them activates). Already-lexed lookahead (curr
+	// and next) sits on the match line, so toggling is safe.
+	prev_layout := p.lexer.paren_layout_depth
+	set_layout := prev_layout < 0 && p.lexer.brace_depth > 0
+	if set_layout {
+		p.lexer.paren_layout_depth = p.lexer.brace_depth
+	}
+	subject := p.parse_expr() or {
+		if set_layout {
+			p.lexer.paren_layout_depth = prev_layout
+		}
+		return err
+	}
 	if p.curr.kind == .colon {
-		return p.parse_indented_match_cases(subject)
+		cases := p.parse_indented_match_cases(subject) or {
+			if set_layout {
+				p.lexer.paren_layout_depth = prev_layout
+			}
+			return err
+		}
+		if set_layout {
+			p.lexer.paren_layout_depth = prev_layout
+		}
+		return cases
+	}
+	if set_layout {
+		p.lexer.paren_layout_depth = prev_layout
 	}
 	return error('expected ":" after match subject')
 }
 
 fn (mut p Parser) parse_indented_match_cases(subject Expr) !Expr {
 	start := p.curr
+	// Indent-stack depth before the arms push their level; bracketed
+	// matches clamp back to it on termination (see below).
+	base_indent := p.lexer.indent_stack.len
 	// A nested match used as our subject leaves skip_stmt_newline set;
 	// our own colon starts fresh layout, so clear it.
 	p.skip_stmt_newline = false
@@ -4917,12 +4993,29 @@ fn (mut p Parser) parse_indented_match_cases(subject Expr) !Expr {
 	if cases.len == 0 {
 		return error('indented match expression needs at least one case')
 	}
-	if p.curr.kind == .rparen && p.lexer.paren_layout_depth >= 0 {
-		// The paren closed on/below the arm indent (`_: "b")`): it doubles
-		// as our terminator. The paren path pops unclosed layout levels.
-		p.match_rparen_terminated = true
+	if p.lexer.paren_layout_depth >= 0 {
+		// Bracketed match (parens, call args, displays): the terminator
+		// belongs to the enclosing bracket, so never consume it and never
+		// treat this as a statement boundary. A closer on the arm line
+		// leaves the arm level pushed; clamp back to the entry depth.
+		// (Over-dedented closers stay rejected, as in the paren path: only
+		// one dedent is consumed here.)
+		if p.curr.kind == .dedent {
+			p.advance()!
+		}
+		if p.lexer.indent_stack.len > base_indent {
+			p.lexer.indent_stack = p.lexer.indent_stack[..base_indent]
+		}
+		if p.curr.kind == .rparen {
+			// The paren closed on/below the arm indent (`_: "b")`): it
+			// doubles as our terminator. The paren path pops unclosed
+			// layout levels.
+			p.match_rparen_terminated = true
+		}
+		p.match_stmt_boundary = false
 	} else {
 		p.expect(.dedent)!
+		p.match_stmt_boundary = true
 	}
 	p.skip_stmt_newline = true
 	return MatchExpr{
@@ -4939,7 +5032,7 @@ fn (mut p Parser) parse_match_case_body() !Expr {
 	if p.curr.kind == .newline {
 		p.expect(.newline)!
 		p.expect(.indent)!
-		body := p.parse_expr()!
+		body := p.parse_test()!
 		if p.skip_stmt_newline {
 			p.skip_stmt_newline = false
 		} else if p.curr.kind == .newline {
@@ -4950,13 +5043,18 @@ fn (mut p Parser) parse_match_case_body() !Expr {
 		return body
 	}
 
-	body := p.parse_expr()!
+	body := p.parse_test()!
 	if p.skip_stmt_newline {
 		p.skip_stmt_newline = false
 	} else {
 		mut need_newline := true
-		if p.curr.kind == .rparen && p.lexer.paren_layout_depth >= 0 {
-			// Parenthesized match closed on the body line (`_: "b")`).
+		if p.lexer.paren_layout_depth >= 0
+			&& (p.curr.kind == .rparen || p.curr.kind == .comma
+			|| p.curr.kind == .rbracket || p.curr.kind == .rbrace) {
+			// Bracketed match closed (or continued, for `,`) on the body
+			// line (`_: "b")`). The terminator belongs to the enclosing
+			// bracket; the cases loop below stops because none of these
+			// start a pattern.
 			need_newline = false
 		}
 		if need_newline {
@@ -4964,6 +5062,145 @@ fn (mut p Parser) parse_match_case_body() !Expr {
 		}
 	}
 	return body
+}
+
+// parse_match_stmt parses a match *statement* and desugars it to an
+// if/elif chain. Unlike match expressions (whose arms are single
+// expressions with value semantics), statement arms are full suites:
+//
+//     match x:
+//         1: return 10
+//         _: return 20
+//
+// becomes `if x == 1: return 10 / else: return 20`. Only int-literal
+// patterns and the `_` wildcard are supported; named captures cannot be
+// desugared to comparisons and are rejected, as are arms after the
+// wildcard and wildcard-only matches (which have no dispatch to desugar).
+// A missing wildcard simply falls through, like if/elif without else.
+// Non-trivial subjects (anything but a Name or constant) are evaluated
+// once via a walrus-bound temporary in the first test:
+//
+//     if (__spy_match_0 = f(x)) == 1: ...
+//     elif __spy_match_0 == 2: ...
+fn (mut p Parser) parse_match_stmt() !Stmt {
+	p.expect(.kw_match)!
+	subject := p.parse_expr()!
+	p.expect(.colon)!
+	p.expect(.newline)!
+	p.expect(.indent)!
+	p.match_stmt_committed = true
+	mut int_arms := []MatchIntArm{}
+	mut wildcard_body := []Stmt{}
+	mut has_wildcard := false
+	p.consume_newlines()!
+	for is_pattern_start(p.curr.kind) {
+		pattern := p.parse_pattern()!
+		if pattern is WildcardPattern {
+			if has_wildcard {
+				return error('duplicate `_` arm in match statement')
+			}
+			has_wildcard = true
+			wildcard_body = p.parse_suite(true)!
+		} else if pattern is ValuePattern {
+			if has_wildcard {
+				return error('unreachable arm after `_` in match statement')
+			}
+			body := p.parse_suite(true)!
+			int_arms << MatchIntArm{
+				value: pattern.value
+				line: pattern.line
+				col: pattern.col
+				end_line: pattern.end_line
+				end_col: pattern.end_col
+				body: body
+			}
+		} else {
+			return error('capture patterns are not supported in match statements; use `_` for the default arm')
+		}
+		p.consume_newlines()!
+	}
+	if int_arms.len == 0 {
+		return error('match statement needs at least one int-literal arm')
+	}
+	p.expect(.dedent)!
+	return p.desugar_match_stmt(subject, int_arms, wildcard_body)
+}
+
+// MatchIntArm is one `literal: suite` arm of a match statement, kept
+// alongside its source position for the desugared comparisons.
+struct MatchIntArm {
+	value int
+	line     int
+	col      int
+	end_line int
+	end_col  int
+	body []Stmt
+}
+
+// desugar_match_stmt folds int arms (plus an optional wildcard body) into
+// a nested if/elif chain, oldest arm outermost.
+fn (mut p Parser) desugar_match_stmt(subject Expr, int_arms []MatchIntArm, wildcard_body []Stmt) Stmt {
+	mut use_temp := true
+	if subject is NameExpr {
+		use_temp = false
+	} else if subject is IntExpr || subject is FloatExpr || subject is StringExpr
+		|| subject is BoolExpr || subject is NoneExpr {
+		use_temp = false
+	}
+	temp := '__spy_match_${p.match_temp_id}'
+	if use_temp {
+		p.match_temp_id++
+	}
+	mut orelse := wildcard_body.clone()
+	for i := int_arms.len - 1; i >= 0; i-- {
+		arm := int_arms[i]
+		mut left := subject
+		if use_temp {
+			if i == 0 {
+				left = NamedExpr{
+					line: subject.line
+					col: subject.col
+					end_line: subject.end_line
+					end_col: subject.end_col
+					target: temp
+					value: subject
+				}
+			} else {
+				left = NameExpr{
+					line: subject.line
+					col: subject.col
+					end_line: subject.end_line
+					end_col: subject.end_col
+					name: temp
+				}
+			}
+		}
+		test := CompareExpr{
+			line: arm.line
+			col: arm.col
+			end_line: arm.end_line
+			end_col: arm.end_col
+			left: left
+			ops: ['Eq']
+			comparators: [Expr(IntExpr{
+				line: arm.line
+				col: arm.col
+				end_line: arm.end_line
+				end_col: arm.end_col
+				value: arm.value
+			})]
+		}
+		orelse = [Stmt(IfStmt{
+			line: arm.line
+			col: arm.col
+			end_line: arm.end_line
+			end_col: arm.end_col
+			test: test
+			body: arm.body
+			orelse: orelse
+		})]
+	}
+	return orelse[0]
 }
 
 fn (mut p Parser) parse_pattern() !Pattern {
