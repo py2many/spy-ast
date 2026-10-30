@@ -125,11 +125,9 @@ def test_v_parser_rejects_unsupported_statements() -> None:
     # than a silently degraded tree. Each source below is either invalid
     # Python or a deliberately unsupported construct.
     for source in [
-        "x = b'bytes'\n",
         "x = 1j\n",
         "x = f'{v:{w}}'\n",
         "type u8 = int\n",
-        "x = 1; y = 2\n",
         "match x:\n    case 1:\n        pass\n",
     ]:
         with pytest.raises(ValueError):

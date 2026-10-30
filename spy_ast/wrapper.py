@@ -68,6 +68,18 @@ def parse(
     """
     if mode != "exec" and mode != "eval" and mode != "single":
         raise ValueError(f"parse() mode must be 'exec', 'eval' or 'single', not {mode!r}")
+    if isinstance(source, ast.AST):
+        # Mirror the standard library: compile() accepts an already-parsed
+        # tree and round-trips it (py2many passes trees back into ast.parse).
+        if mode == "exec" and isinstance(source, ast.Module):
+            return source
+        if mode == "eval" and isinstance(source, ast.Expression):
+            return source
+        if mode == "single" and isinstance(source, ast.Interactive):
+            return source
+        if mode == "eval":
+            raise TypeError(f"expected Expression node, got {type(source).__name__}")
+        raise TypeError(f"expected Module node, got {type(source).__name__}")
     text = _coerce_text(source)
     try:
         if mode == "eval":
@@ -150,7 +162,7 @@ def _module_path_for(source_dir: Path) -> Path:
     return module_path
 
 
-def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:
+def _stmt_from_json_inner(data: dict[str, Any]) -> ast.stmt:
     kind = data["type"]
     if kind == "Import":
         return ast.Import(names=[_alias_from_json(item) for item in data["names"]])
@@ -279,7 +291,7 @@ def _stmt_from_json(data: dict[str, Any]) -> ast.stmt:
     raise SpySyntaxError(f"unsupported statement type: {kind}")
 
 
-def _expr_from_json(data: dict[str, Any]) -> ast.expr:
+def _expr_from_json_inner(data: dict[str, Any]) -> ast.expr:
     kind = data["type"]
     if kind == "Constant":
         return ast.Constant(value=data["value"], kind=None)
@@ -287,6 +299,8 @@ def _expr_from_json(data: dict[str, Any]) -> ast.expr:
         return ast.Constant(value=float(data["value"]), kind=None)
     if kind == "Ellipsis":
         return ast.Constant(value=Ellipsis, kind=None)
+    if kind == "Bytes":
+        return ast.Constant(value=bytes(data["value"]))
     if kind == "Name":
         return ast.Name(id=data["id"], ctx=ast.Load())
     if kind == "Call":
@@ -400,6 +414,50 @@ def _expr_from_json(data: dict[str, Any]) -> ast.expr:
     raise SpySyntaxError(f"unsupported expression type: {kind}")
 
 
+
+def _apply_loc(node, data):
+    """Attach V-parser source positions, mirroring stdlib ``ast`` attributes."""
+    node.lineno = data.get("line") or 1
+    node.col_offset = data.get("col", 0) or 0
+    node.end_lineno = data.get("end_line") or node.lineno
+    node.end_col_offset = data.get("end_col", 0) or 0
+    return node
+
+
+def _stmt_from_json(data):
+    return _apply_loc(_stmt_from_json_inner(data), data)
+
+def _expr_from_json(data):
+    return _apply_loc(_expr_from_json_inner(data), data)
+
+def _arg_from_json(data):
+    return _apply_loc(_arg_from_json_inner(data), data)
+
+def _arguments_from_json(data):
+    return _apply_loc(_arguments_from_json_inner(data), data)
+
+def _keyword_from_json(data):
+    return _apply_loc(_keyword_from_json_inner(data), data)
+
+def _comprehension_from_json(data):
+    return _apply_loc(_comprehension_from_json_inner(data), data)
+
+def _except_handler_from_json(data):
+    return _apply_loc(_except_handler_from_json_inner(data), data)
+
+def _withitem_from_json(data):
+    return _apply_loc(_withitem_from_json_inner(data), data)
+
+def _pattern_from_json(data):
+    return _apply_loc(_pattern_from_json_inner(data), data)
+
+def _case_from_json(data):
+    return _apply_loc(_case_from_json_inner(data), data)
+
+def _alias_from_json(data):
+    return _apply_loc(_alias_from_json_inner(data), data)
+
+
 def _set_ctx(node: ast.AST, ctx: ast.expr_context) -> ast.AST:
     if isinstance(node, ast.Name):
         node.ctx = ctx() if isinstance(ctx, type) else ctx
@@ -418,11 +476,11 @@ def _set_ctx(node: ast.AST, ctx: ast.expr_context) -> ast.AST:
     return node
 
 
-def _keyword_from_json(data: dict[str, Any]) -> ast.keyword:
+def _keyword_from_json_inner(data: dict[str, Any]) -> ast.keyword:
     return ast.keyword(arg=data.get("arg"), value=_expr_from_json(data["value"]))
 
 
-def _comprehension_from_json(data: dict[str, Any]) -> ast.comprehension:
+def _comprehension_from_json_inner(data: dict[str, Any]) -> ast.comprehension:
     return ast.comprehension(
         target=_set_ctx(_expr_from_json(data["target"]), ast.Store),
         iter=_expr_from_json(data["iter"]),
@@ -431,7 +489,7 @@ def _comprehension_from_json(data: dict[str, Any]) -> ast.comprehension:
     )
 
 
-def _except_handler_from_json(data: dict[str, Any]) -> ast.ExceptHandler:
+def _except_handler_from_json_inner(data: dict[str, Any]) -> ast.ExceptHandler:
     if data.get("type", "ExceptHandler") != "ExceptHandler":
         raise SpySyntaxError(f"unsupported handler type: {data.get('type')}")
     typ = data.get("typ")
@@ -442,7 +500,7 @@ def _except_handler_from_json(data: dict[str, Any]) -> ast.ExceptHandler:
     )
 
 
-def _withitem_from_json(data: dict[str, Any]) -> ast.withitem:
+def _withitem_from_json_inner(data: dict[str, Any]) -> ast.withitem:
     if data.get("type", "withitem") != "withitem":
         raise SpySyntaxError(f"unsupported withitem type: {data.get('type')}")
     raw = data.get("vars")
@@ -452,7 +510,7 @@ def _withitem_from_json(data: dict[str, Any]) -> ast.withitem:
     )
 
 
-def _arg_from_json(data: dict[str, Any]) -> ast.arg:
+def _arg_from_json_inner(data: dict[str, Any]) -> ast.arg:
     raw = data.get("annotation")
     return ast.arg(
         arg=str(data["arg"]),
@@ -461,7 +519,7 @@ def _arg_from_json(data: dict[str, Any]) -> ast.arg:
     )
 
 
-def _arguments_from_json(data: dict[str, Any]) -> ast.arguments:
+def _arguments_from_json_inner(data: dict[str, Any]) -> ast.arguments:
     return ast.arguments(
         posonlyargs=[_arg_from_json(item) for item in data.get("posonlyargs", [])],
         args=[_arg_from_json(item) for item in data.get("args", [])],
@@ -476,7 +534,7 @@ def _arguments_from_json(data: dict[str, Any]) -> ast.arguments:
     )
 
 
-def _pattern_from_json(data: dict[str, Any]) -> ast.pattern:
+def _pattern_from_json_inner(data: dict[str, Any]) -> ast.pattern:
     kind = data["type"]
     if kind == "MatchAs":
         return ast.MatchAs(pattern=None, name=data.get("name"))
@@ -488,7 +546,7 @@ def _pattern_from_json(data: dict[str, Any]) -> ast.pattern:
     raise SpySyntaxError(f"unsupported pattern type: {kind}")
 
 
-def _case_from_json(data: dict[str, Any]) -> ast.match_case:
+def _case_from_json_inner(data: dict[str, Any]) -> ast.match_case:
     if data["type"] != "match_case":
         raise SpySyntaxError(f"unsupported case type: {data['type']}")
     return ast.match_case(
@@ -498,7 +556,7 @@ def _case_from_json(data: dict[str, Any]) -> ast.match_case:
     )
 
 
-def _alias_from_json(data: dict[str, Any]) -> ast.alias:
+def _alias_from_json_inner(data: dict[str, Any]) -> ast.alias:
     return ast.alias(name=data["name"], asname=data.get("asname"))
 
 
