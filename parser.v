@@ -11,6 +11,7 @@ enum TokenKind {
 	int_lit
 	float_lit
 	string_lit
+	bytes_lit
 	ellipsis
 	kw_true
 	kw_false
@@ -75,6 +76,7 @@ enum TokenKind {
 	comma
 	dot
 	colon
+	semicolon
 	lt
 	gt
 	le
@@ -91,8 +93,13 @@ enum TokenKind {
 }
 
 struct Token {
-	kind TokenKind
-	text string
+mut:
+	kind     TokenKind
+	text     string
+	line     int
+	col      int
+	end_line int
+	end_col  int
 }
 
 pub type Expr = AttributeExpr
@@ -100,6 +107,7 @@ pub type Expr = AttributeExpr
 	| BinaryExpr
 	| BoolExpr
 	| BoolOpExpr
+	| BytesExpr
 	| CallExpr
 	| CompareExpr
 	| DictCompExpr
@@ -156,6 +164,10 @@ pub type Stmt = AnnAssignStmt
 
 pub struct IntExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value int
 }
 
@@ -163,51 +175,108 @@ pub:
 // round-trips through JSON without binary float formatting issues.
 pub struct FloatExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	text string
 }
 
 pub struct StringExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
+	value string
+}
+
+pub struct BytesExpr {
+pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value string
 }
 
 pub struct BoolExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value bool
 }
 
-pub struct NoneExpr {}
+pub struct NoneExpr {
+pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
+}
 
-pub struct EllipsisExpr {}
+pub struct EllipsisExpr {
+pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
+}
 
 pub struct ListExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	elts []Expr
 }
 
 pub struct TupleExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	elts []Expr
 }
 
 pub struct SetExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	elts []Expr
 }
 
 pub struct DictExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	keys   []?Expr
 	values []Expr
 }
 
 pub struct StarredExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value Expr
 }
 
 pub struct SliceExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	lower ?Expr
 	upper ?Expr
 	step  ?Expr
@@ -215,6 +284,10 @@ pub:
 
 pub struct IfExpExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	test   Expr
 	body   Expr
 	orelse Expr
@@ -222,33 +295,57 @@ pub:
 
 pub struct NamedExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	target string
 	value  Expr
 }
 
 pub struct LambdaExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	args FunctionArgs
 	body Expr
 }
 
 pub struct YieldExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value ?Expr
 }
 
 pub struct YieldFromExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value Expr
 }
 
 pub struct AwaitExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value Expr
 }
 
 pub struct ComprehensionClause {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	target   Expr
 	iter     Expr
 	ifs      []Expr
@@ -257,24 +354,40 @@ pub:
 
 pub struct ListCompExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	elt        Expr
 	generators []ComprehensionClause
 }
 
 pub struct SetCompExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	elt        Expr
 	generators []ComprehensionClause
 }
 
 pub struct GeneratorExpExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	elt        Expr
 	generators []ComprehensionClause
 }
 
 pub struct DictCompExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	key        Expr
 	value      Expr
 	generators []ComprehensionClause
@@ -282,6 +395,10 @@ pub:
 
 pub struct FormattedValueExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value      Expr
 	conversion int
 	format_spec ?Expr
@@ -289,22 +406,38 @@ pub:
 
 pub struct JoinedStrExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	values []Expr
 }
 
 pub struct NameExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	name string
 }
 
 pub struct CallKeyword {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	name  ?string
 	value Expr
 }
 
 pub struct CallExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	func     Expr
 	args     []Expr
 	keywords []CallKeyword
@@ -312,24 +445,40 @@ pub:
 
 pub struct AttributeExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value Expr
 	attr  string
 }
 
 pub struct SubscriptExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value Expr
 	slice Expr
 }
 
 pub struct UnaryExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	op      string
 	operand Expr
 }
 
 pub struct BinaryExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	left  Expr
 	op    string
 	right Expr
@@ -337,12 +486,20 @@ pub:
 
 pub struct BoolOpExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	op     string
 	values []Expr
 }
 
 pub struct CompareExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	left        Expr
 	ops         []string
 	comparators []Expr
@@ -350,41 +507,75 @@ pub:
 
 pub struct MatchCase {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	pattern Pattern
 	body    Expr
 }
 
 pub struct MatchExpr {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	subject Expr
 	cases   []MatchCase
 }
 
 pub struct ValuePattern {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value int
 }
 
 pub struct BindPattern {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	name string
 }
 
-pub struct WildcardPattern {}
+pub struct WildcardPattern {
+pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
+}
 
 pub struct ExprStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value Expr
 }
 
 pub struct AssignStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	targets []Expr
 	value   Expr
 }
 
 pub struct AugAssignStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	target Expr
 	op     string
 	value  Expr
@@ -392,25 +583,55 @@ pub:
 
 pub struct AnnAssignStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	target     Expr
 	annotation Expr
 	value      ?Expr
 	simple      bool
 }
 
-pub struct PassStmt {}
+pub struct PassStmt {
+pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
+}
 
-pub struct BreakStmt {}
+pub struct BreakStmt {
+pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
+}
 
-pub struct ContinueStmt {}
+pub struct ContinueStmt {
+pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
+}
 
 pub struct ReturnStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	value ?Expr
 }
 
 pub struct IfStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	test   Expr
 	body   []Stmt
 	orelse []Stmt
@@ -418,6 +639,10 @@ pub:
 
 pub struct WhileStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	test   Expr
 	body   []Stmt
 	orelse []Stmt
@@ -425,6 +650,10 @@ pub:
 
 pub struct ForStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	target   Expr
 	iter     Expr
 	body     []Stmt
@@ -434,12 +663,20 @@ pub:
 
 pub struct FunctionArg {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	name       string
 	annotation ?Expr
 }
 
 pub struct FunctionArgs {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	posonlyargs []FunctionArg
 	args        []FunctionArg
 	vararg      ?FunctionArg
@@ -451,6 +688,10 @@ pub:
 
 pub struct FunctionDefStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	name           string
 	args           FunctionArgs
 	body           []Stmt
@@ -461,6 +702,10 @@ pub:
 
 pub struct ClassDefStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	name           string
 	bases          []Expr
 	keywords       []CallKeyword
@@ -470,23 +715,39 @@ pub:
 
 pub struct AssertStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	test Expr
 	msg  ?Expr
 }
 
 pub struct DeleteStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	targets []Expr
 }
 
 pub struct RaiseStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	exc   ?Expr
 	cause ?Expr
 }
 
 pub struct ExceptHandler {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	typ  ?Expr
 	name string
 	body []Stmt
@@ -494,6 +755,10 @@ pub:
 
 pub struct TryStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	body      []Stmt
 	handlers  []ExceptHandler
 	orelse    []Stmt
@@ -503,12 +768,20 @@ pub:
 
 pub struct WithItem {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	context_expr Expr
 	vars         ?Expr
 }
 
 pub struct WithStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	items    []WithItem
 	body     []Stmt
 	is_async bool
@@ -516,27 +789,47 @@ pub:
 
 pub struct GlobalStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	names []string
 }
 
 pub struct NonlocalStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	names []string
 }
 
 pub struct ImportAlias {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	name   string
 	asname string
 }
 
 pub struct ImportStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	names []ImportAlias
 }
 
 pub struct ImportFromStmt {
 pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
 	module string
 	level  int
 	names  []ImportAlias
@@ -551,13 +844,63 @@ struct Lexer {
 	source string
 mut:
 	pos           int
-	at_line_start bool  = true
-	indent_stack  []int = [0]
+	at_line_start bool   = true
+	indent_stack  []int  = [0]
 	pending       []Token
 	brace_depth   int
+	line_starts   []int
+	tok_start     int
+}
+
+// lookup_pos maps a byte offset to a 1-based line and 0-based column.
+// The line table is built lazily on first use.
+fn (mut l Lexer) lookup_pos(pos int) (int, int) {
+	if l.line_starts.len == 0 {
+		l.line_starts << 0
+		for i := 0; i < l.source.len; i++ {
+			if l.source[i] == `\n` {
+				l.line_starts << i + 1
+			}
+		}
+	}
+	mut line := 1
+	mut lo := 0
+	mut hi := l.line_starts.len - 1
+	for lo <= hi {
+		mid := (lo + hi) / 2
+		if l.line_starts[mid] <= pos {
+			line = mid + 1
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+	line_start := l.line_starts[line - 1]
+	mut col := pos - line_start
+	if col < 0 {
+		col = 0
+	}
+	return line, col
+}
+
+fn (mut l Lexer) stamp(mut tok Token, start int, end int) Token {
+	tok.line, tok.col = l.lookup_pos(start)
+	tok.end_line, tok.end_col = l.lookup_pos(end)
+	return tok
 }
 
 fn (mut l Lexer) next_token() !Token {
+	if l.pending.len > 0 {
+		tok := l.pending[0]
+		l.pending = l.pending[1..]
+		return tok
+	}
+	l.tok_start = l.pos
+	mut tok := l.next_token_inner()!
+	return l.stamp(mut tok, l.tok_start, l.pos)
+}
+
+fn (mut l Lexer) next_token_inner() !Token {
 	for {
 		if l.pending.len > 0 {
 			tok := l.pending[0]
@@ -565,6 +908,15 @@ fn (mut l Lexer) next_token() !Token {
 			return tok
 		}
 		if l.pos >= l.source.len {
+			// An unterminated final line still ends the last statement:
+			// synthesize the newline CPython would emit before DEDENTs.
+			if !l.at_line_start && l.brace_depth == 0 {
+				l.at_line_start = true
+				return Token{
+					kind: .newline
+					text: '\n'
+				}
+			}
 			if l.indent_stack.len > 1 {
 				l.indent_stack = l.indent_stack[..l.indent_stack.len - 1]
 				return Token{
@@ -590,6 +942,7 @@ fn (mut l Lexer) next_token() !Token {
 		if l.pos >= l.source.len {
 			continue
 		}
+		l.tok_start = l.pos
 		ch := l.source[l.pos]
 		if ch == `#` {
 			l.skip_comment()
@@ -777,6 +1130,12 @@ fn (mut l Lexer) next_token() !Token {
 				Token{
 					kind: .comma
 					text: ','
+				}
+			}
+			`;` {
+				Token{
+					kind: .semicolon
+					text: ';'
 				}
 			}
 			// NOTE: `.` is lexed in next_token before this match (ellipsis,
@@ -1146,19 +1505,19 @@ fn (mut l Lexer) handle_indentation() ! {
 	curr := l.indent_stack[l.indent_stack.len - 1]
 	if spaces > curr {
 		l.indent_stack << spaces
-		l.pending << Token{
+		l.pending << l.stamp(mut Token{
 			kind: .indent
 			text: ''
-		}
+		}, i, i)
 		return
 	}
 	if spaces < curr {
 		for l.indent_stack.len > 1 && l.indent_stack[l.indent_stack.len - 1] > spaces {
 			l.indent_stack = l.indent_stack[..l.indent_stack.len - 1]
-			l.pending << Token{
+			l.pending << l.stamp(mut Token{
 				kind: .dedent
 				text: ''
-			}
+			}, i, i)
 		}
 		if l.indent_stack[l.indent_stack.len - 1] != spaces {
 			return error('inconsistent indentation')
@@ -1499,10 +1858,146 @@ fn (mut l Lexer) read_raw_string_literal(quote u8) !string {
 	return text
 }
 
+fn hex_val(c u8) int {
+	if c >= `0` && c <= `9` {
+		return int(c - `0`)
+	}
+	if c >= `a` && c <= `f` {
+		return int(c - `a`) + 10
+	}
+	if c >= `A` && c <= `F` {
+		return int(c - `A`) + 10
+	}
+	return -1
+}
+
+fn bytes_to_text(b []u8) string {
+	mut out := ''
+	for c in b {
+		out += c.ascii_str()
+	}
+	return out
+}
+
+fn unescape_bytes(s string) ![]u8 {
+	mut out := []u8{}
+	mut i := 0
+	for i < s.len {
+		if s[i] == `\\` && i + 1 < s.len {
+			next := s[i + 1]
+			if next == `\n` {
+				i += 2
+				continue
+			}
+			if next == `\r` && i + 2 < s.len && s[i + 2] == `\n` {
+				i += 3
+				continue
+			}
+			match next {
+				`n` {
+					out << u8(10)
+					i += 2
+					continue
+				}
+				`t` {
+					out << u8(9)
+					i += 2
+					continue
+				}
+				`r` {
+					out << u8(13)
+					i += 2
+					continue
+				}
+				`a` {
+					out << u8(7)
+					i += 2
+					continue
+				}
+				`b` {
+					out << u8(8)
+					i += 2
+					continue
+				}
+				`f` {
+					out << u8(12)
+					i += 2
+					continue
+				}
+				`v` {
+					out << u8(11)
+					i += 2
+					continue
+				}
+				`\\` {
+					out << u8(92)
+					i += 2
+					continue
+				}
+				`'` {
+					out << u8(39)
+					i += 2
+					continue
+				}
+				`"` {
+					out << u8(34)
+					i += 2
+					continue
+				}
+				`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7` {
+					mut val := int(next - `0`)
+					mut j := i + 2
+					for j < s.len && j < i + 4 && s[j] >= `0` && s[j] <= `7` {
+						val = val * 8 + int(s[j] - `0`)
+						j++
+					}
+					out << u8(val & 0xff)
+					i = j
+					continue
+				}
+				`x` {
+					if i + 3 >= s.len || hex_val(s[i + 2]) < 0 || hex_val(s[i + 3]) < 0 {
+						return error('truncated \\x escape in bytes literal')
+					}
+					out << u8(hex_val(s[i + 2]) * 16 + hex_val(s[i + 3]))
+					i += 4
+					continue
+				}
+				else {
+					if next == `N` || next == `u` || next == `U` {
+						return error('unicode escape in bytes literal is not supported')
+					}
+					out << u8(92)
+					out << next
+					i += 2
+					continue
+				}
+			}
+		}
+		out << s[i]
+		i++
+	}
+	return out
+}
+
 fn (mut l Lexer) lex_prefixed_string(prefix_text string) !Token {
 	lower := prefix_text.to_lower()
 	if lower.contains('b') {
-		return error('bytes literals are not supported')
+		is_raw := lower.contains('r')
+		quote := l.source[l.pos]
+		raw := l.read_raw_string_literal(quote)!
+		mut data := []u8{}
+		if is_raw {
+			for k := 0; k < raw.len; k++ {
+				data << raw[k]
+			}
+		} else {
+			data = unescape_bytes(raw)!
+		}
+		return Token{
+			kind: .bytes_lit
+			text: bytes_to_text(data)
+		}
 	}
 	quote := l.source[l.pos]
 	if lower.contains('f') {
@@ -1528,9 +2023,15 @@ fn (mut l Lexer) lex_prefixed_string(prefix_text string) !Token {
 // f-strings) is handled by the normal machinery; format specs are kept as
 // raw text and nested replacement fields inside them are rejected.
 fn (mut l Lexer) lex_fstring(quote u8, is_raw bool) !Token {
+	sl, sc := l.lookup_pos(l.pos)
+	sel, sec := l.lookup_pos(l.pos + 1)
 	mut toks := [Token{
 		kind: .fstr_start
 		text: ''
+		line: sl
+		col: sc
+		end_line: sel
+		end_col: sec
 	}]
 	triple := l.pos + 2 < l.source.len && l.source[l.pos + 1] == quote
 		&& l.source[l.pos + 2] == quote
@@ -1543,6 +2044,7 @@ fn (mut l Lexer) lex_fstring(quote u8, is_raw bool) !Token {
 		mut raw := ''
 		mut done := false
 		mut field := false
+		frag_start := l.pos
 		for l.pos < l.source.len {
 			ch := l.source[l.pos]
 			if !triple && ch == `\n` {
@@ -1595,15 +2097,26 @@ fn (mut l Lexer) lex_fstring(quote u8, is_raw bool) !Token {
 		}
 		chunk := if is_raw { raw } else { unescape_string(raw) }
 		if chunk != '' {
+			tl, tc := l.lookup_pos(frag_start)
+			tel, tec := l.lookup_pos(l.pos)
 			toks << Token{
 				kind: .fstr_text
 				text: chunk
+				line: tl
+				col: tc
+				end_line: tel
+				end_col: tec
 			}
 		}
 		if done {
+			el, ec := l.lookup_pos(l.pos)
 			toks << Token{
 				kind: .fstr_end
 				text: ''
+				line: el
+				col: ec
+				end_line: el
+				end_col: ec
 			}
 			break
 			}
@@ -1636,9 +2149,15 @@ fn is_lambda_keyword_at(s string, k int) bool {
 }
 
 fn (mut l Lexer) lex_fstring_field() ![]Token {
+	ol, oc := l.lookup_pos(l.pos - 1)
+	oel, oec := l.lookup_pos(l.pos)
 	mut toks := [Token{
 		kind: .fstr_field_open
 		text: ''
+		line: ol
+		col: oc
+		end_line: oel
+		end_col: oec
 	}]
 	// Scan the field extent: up to the matching top-level `}`. Strings,
 	// comments, and nested braces are skipped so only the field-closing
@@ -1847,17 +2366,33 @@ fn (mut l Lexer) lex_fstring_field() ![]Token {
 		source:      expr_src
 		brace_depth: 1
 	}
+	// The sub-lexer reports positions relative to the field slice; shift
+	// them to absolute source coordinates.
+	base_line, base_col := l.lookup_pos(start)
 	for {
-		tok := sub.next_token()!
+		mut tok := sub.next_token()!
 		if tok.kind == .eof {
 			break
+		}
+		tok.line += base_line - 1
+		if tok.line == base_line {
+			tok.col += base_col
+		}
+		tok.end_line += base_line - 1
+		if tok.end_line == base_line {
+			tok.end_col += base_col
 		}
 		toks << tok
 	}
 	if conversion >= 0 {
+		bl, bc := l.lookup_pos(l.pos)
 		toks << Token{
 			kind: .fstr_bang
 			text: conversion.str()
+			line: bl
+			col: bc
+			end_line: bl
+			end_col: bc
 		}
 	}
 	if spec != '' {
@@ -1865,14 +2400,25 @@ fn (mut l Lexer) lex_fstring_field() ![]Token {
 		if spec.contains('{') {
 			return error('nested replacement fields in format spec are not supported')
 		}
+		spl, spc := l.lookup_pos(l.pos)
 		toks << Token{
 			kind: .fstr_spec
 			text: spec
+			line: spl
+			col: spc
+			end_line: spl
+			end_col: spc
 		}
 	}
+	cl, cc := l.lookup_pos(l.pos - 1)
+	cel, cec := l.lookup_pos(l.pos)
 	toks << Token{
 		kind: .fstr_field_close
 		text: ''
+		line: cl
+		col: cc
+		end_line: cel
+		end_col: cec
 	}
 	return toks
 }
@@ -1882,6 +2428,7 @@ mut:
 	lexer             Lexer
 	curr              Token
 	next              Token
+	prev_real         Token
 	skip_stmt_newline bool
 }
 
@@ -1893,9 +2440,10 @@ fn new_parser(source string) !Parser {
 	first := lexer.next_token()!
 	second := lexer.next_token()!
 	return Parser{
-		lexer: lexer
-		curr:  first
-		next:  second
+		lexer:     lexer
+		curr:      first
+		next:      second
+		prev_real: first
 	}
 }
 
@@ -1964,6 +2512,13 @@ fn (mut p Parser) parse_stmt() !Stmt {
 // finish_simple_stmt consumes the statement terminator after a simple
 // statement, honouring the match-expression flag and trailing EOF.
 fn (mut p Parser) finish_simple_stmt() ! {
+	if p.curr.kind == .semicolon {
+		p.advance()!
+		if p.skip_stmt_newline {
+			p.skip_stmt_newline = false
+		}
+		return
+	}
 	if p.skip_stmt_newline {
 		p.skip_stmt_newline = false
 		return
@@ -2020,10 +2575,15 @@ fn (mut p Parser) parse_async_stmt() !Stmt {
 }
 
 fn (mut p Parser) parse_if_stmt() !Stmt {
+	start := p.curr
 	p.expect(.kw_if)!
 	test := p.parse_expr()!
 	body := p.parse_suite(true)!
 	return IfStmt{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		test:   test
 		body:   body
 		orelse: p.parse_if_orelse()!
@@ -2031,6 +2591,7 @@ fn (mut p Parser) parse_if_stmt() !Stmt {
 	}
 
 	fn (mut p Parser) parse_if_orelse() ![]Stmt {
+		start := p.curr
 	if p.curr.kind == .kw_else {
 		p.advance()!
 		return p.parse_suite(true)!
@@ -2041,6 +2602,10 @@ fn (mut p Parser) parse_if_stmt() !Stmt {
 		body := p.parse_suite(true)!
 		return [
 			Stmt(IfStmt{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				test:   test
 				body:   body
 				orelse: p.parse_if_orelse()!
@@ -2051,6 +2616,7 @@ fn (mut p Parser) parse_if_stmt() !Stmt {
 	}
 
 fn (mut p Parser) parse_while_stmt() !Stmt {
+	start := p.curr
 	p.expect(.kw_while)!
 	test := p.parse_expr()!
 	body := p.parse_suite(true)!
@@ -2060,6 +2626,10 @@ fn (mut p Parser) parse_while_stmt() !Stmt {
 		orelse = p.parse_suite(true)!
 	}
 	return WhileStmt{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		test:   test
 		body:   body
 		orelse: orelse
@@ -2067,6 +2637,7 @@ fn (mut p Parser) parse_while_stmt() !Stmt {
 }
 
 fn (mut p Parser) parse_for_stmt(is_async bool) !Stmt {
+	start := p.curr
 	p.expect(.kw_for)!
 	target := p.parse_comp_target()!
 	if !is_assign_target(target) {
@@ -2085,6 +2656,10 @@ fn (mut p Parser) parse_for_stmt(is_async bool) !Stmt {
 		orelse = p.parse_suite(true)!
 	}
 	return ForStmt{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		target:   target
 		iter:     iter
 		body:     body
@@ -2094,6 +2669,7 @@ fn (mut p Parser) parse_for_stmt(is_async bool) !Stmt {
 }
 
 fn (mut p Parser) parse_function_def(decorators []Expr, is_async bool) !Stmt {
+	start := p.curr
 	p.expect(.kw_def)!
 	name := p.parse_name_text() or { return error('expected function name') }
 	args := p.parse_params(false)!
@@ -2104,6 +2680,10 @@ fn (mut p Parser) parse_function_def(decorators []Expr, is_async bool) !Stmt {
 	}
 	body := p.parse_suite(true)!
 	return FunctionDefStmt{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		name:           name
 		args:           args
 		body:           body
@@ -2117,6 +2697,7 @@ fn (mut p Parser) parse_function_def(decorators []Expr, is_async bool) !Stmt {
 // at `:` and carry no annotations; function parameters end at `)` and may
 // carry annotations, defaults, `/`, `*` and `**` markers.
 fn (mut p Parser) parse_params(lambda_style bool) !FunctionArgs {
+	start := p.curr
 	mut posonlyargs := []FunctionArg{}
 	mut args := []FunctionArg{}
 	mut vararg := ?FunctionArg(none)
@@ -2134,6 +2715,10 @@ fn (mut p Parser) parse_params(lambda_style bool) !FunctionArgs {
 			p.advance()!
 		}
 		return FunctionArgs{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			posonlyargs: posonlyargs
 			args:        args
 			vararg:      vararg
@@ -2168,6 +2753,7 @@ fn (mut p Parser) parse_params(lambda_style bool) !FunctionArgs {
 				|| (lambda_style && p.curr.kind == .colon) {
 				// bare `*` introduces keyword-only parameters
 			} else if is_name_token(p.curr.kind) {
+				varg_tok := p.curr
 				arg_name := p.parse_name_text()!
 				mut ann := ?Expr(none)
 				if !lambda_style && p.curr.kind == .colon {
@@ -2175,6 +2761,10 @@ fn (mut p Parser) parse_params(lambda_style bool) !FunctionArgs {
 					ann = p.parse_test()!
 				}
 				vararg = FunctionArg{
+					line: varg_tok.line,
+					col: varg_tok.col,
+					end_line: p.prev_real.end_line,
+					end_col: p.prev_real.end_col,
 					name:       arg_name
 					annotation: ann
 				}
@@ -2186,6 +2776,7 @@ fn (mut p Parser) parse_params(lambda_style bool) !FunctionArgs {
 			if p.curr.kind != .ident {
 				return error('expected parameter name after **')
 			}
+			kwarg_tok := p.curr
 			arg_name := p.parse_name_text()!
 			mut ann := ?Expr(none)
 			if !lambda_style && p.curr.kind == .colon {
@@ -2193,10 +2784,15 @@ fn (mut p Parser) parse_params(lambda_style bool) !FunctionArgs {
 				ann = p.parse_test()!
 			}
 			kwarg = FunctionArg{
+				line: kwarg_tok.line,
+				col: kwarg_tok.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				name:       arg_name
 				annotation: ann
 			}
 		} else if is_name_token(p.curr.kind) {
+			arg_tok := p.curr
 			name := p.parse_name_text()!
 			mut annotation := ?Expr(none)
 			if !lambda_style && p.curr.kind == .colon {
@@ -2209,6 +2805,10 @@ fn (mut p Parser) parse_params(lambda_style bool) !FunctionArgs {
 				default = p.parse_test()!
 			}
 			arg := FunctionArg{
+				line: arg_tok.line,
+				col: arg_tok.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				name:       name
 				annotation: annotation
 			}
@@ -2236,6 +2836,10 @@ fn (mut p Parser) parse_params(lambda_style bool) !FunctionArgs {
 		p.expect(.rparen)!
 	}
 	return FunctionArgs{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		posonlyargs: posonlyargs
 		args:        args
 		vararg:      vararg
@@ -2247,6 +2851,7 @@ fn (mut p Parser) parse_params(lambda_style bool) !FunctionArgs {
 }
 
 fn (mut p Parser) parse_class_def(decorators []Expr) !Stmt {
+	start := p.curr
 	p.expect(.kw_class)!
 	name := p.parse_name_text() or { return error('expected class name') }
 	mut bases := []Expr{}
@@ -2262,6 +2867,10 @@ fn (mut p Parser) parse_class_def(decorators []Expr) !Stmt {
 	}
 	body := p.parse_suite(true)!
 	return ClassDefStmt{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		name:           name
 		bases:          bases
 		keywords:       keywords
@@ -2276,8 +2885,13 @@ fn (mut p Parser) parse_class_args() !([]Expr, []CallKeyword) {
 	mut seen_keyword := false
 	for {
 		if p.curr.kind == .pow {
+			pow_tok := p.curr
 			p.advance()!
 			keywords << CallKeyword{
+				line: pow_tok.line,
+				col: pow_tok.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				name:  none
 				value: p.parse_test()!
 			}
@@ -2286,9 +2900,14 @@ fn (mut p Parser) parse_class_args() !([]Expr, []CallKeyword) {
 			base := p.parse_test()!
 			if p.curr.kind == .assign {
 				if base is NameExpr {
+					kw_base := base as NameExpr
 					p.advance()!
 					keywords << CallKeyword{
-						name:  (base as NameExpr).name
+						line: kw_base.line,
+						col: kw_base.col,
+						end_line: p.prev_real.end_line,
+						end_col: p.prev_real.end_col,
+						name:  kw_base.name
 						value: p.parse_test()!
 					}
 					seen_keyword = true
@@ -2345,30 +2964,54 @@ fn (mut p Parser) parse_block_suite() ![]Stmt {
 }
 
 fn (mut p Parser) parse_simple_stmt() !Stmt {
+	start := p.curr
 	if p.curr.kind == .kw_import || p.curr.kind == .kw_from {
 		return p.parse_import_stmt()
 	}
 	if p.curr.kind == .kw_pass {
 		p.advance()!
-		return PassStmt{}
+		return PassStmt{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
+		}
 	}
 	if p.curr.kind == .kw_break {
 		p.advance()!
-		return BreakStmt{}
+		return BreakStmt{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
+		}
 	}
 	if p.curr.kind == .kw_continue {
 		p.advance()!
-		return ContinueStmt{}
+		return ContinueStmt{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
+		}
 	}
 	if p.curr.kind == .kw_return {
 		p.advance()!
 		if p.curr.kind == .newline {
 			return ReturnStmt{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				value: none
 			}
 		}
 		value := p.parse_expr()!
 		return ReturnStmt{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			value: value
 		}
 	}
@@ -2381,6 +3024,10 @@ fn (mut p Parser) parse_simple_stmt() !Stmt {
 			msg = p.parse_test()!
 		}
 		return AssertStmt{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			test: test
 			msg:  msg
 		}
@@ -2399,6 +3046,10 @@ fn (mut p Parser) parse_simple_stmt() !Stmt {
 			}
 		}
 		return DeleteStmt{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			targets: targets_list
 		}
 	}
@@ -2414,6 +3065,10 @@ fn (mut p Parser) parse_simple_stmt() !Stmt {
 			}
 		}
 		return RaiseStmt{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			exc:   exc
 			cause: cause
 		}
@@ -2431,10 +3086,18 @@ fn (mut p Parser) parse_simple_stmt() !Stmt {
 		}
 		if is_global {
 			return GlobalStmt{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				names: names
 			}
 		}
 		return NonlocalStmt{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			names: names
 		}
 	}
@@ -2463,6 +3126,10 @@ fn (mut p Parser) parse_simple_stmt() !Stmt {
 				return error('invalid augmented assignment target')
 			}
 			return AugAssignStmt{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				target: first
 				op:     aug
 				value:  p.parse_expr()!
@@ -2480,6 +3147,10 @@ fn (mut p Parser) parse_simple_stmt() !Stmt {
 				value = p.parse_expr()!
 			}
 			return AnnAssignStmt{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				target:     first
 				annotation: annotation
 				value:      value
@@ -2490,6 +3161,10 @@ fn (mut p Parser) parse_simple_stmt() !Stmt {
 	}
 	if targets.len == 0 {
 		return ExprStmt{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			value: first
 		}
 	}
@@ -2499,6 +3174,10 @@ fn (mut p Parser) parse_simple_stmt() !Stmt {
 		}
 	}
 	return AssignStmt{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		targets: targets
 		value:   first
 	}
@@ -2556,6 +3235,7 @@ fn is_assign_target(e Expr) bool {
 	}
 
 	fn (mut p Parser) parse_try_stmt() !Stmt {
+		start := p.curr
 		p.expect(.kw_try)!
 		body := p.parse_suite(false)!
 		mut handlers := []ExceptHandler{}
@@ -2577,6 +3257,10 @@ fn is_assign_target(e Expr) bool {
 			}
 			handler_body := p.parse_suite(true)!
 			handlers << ExceptHandler{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				typ:  typ
 				name: name
 				body: handler_body
@@ -2599,6 +3283,10 @@ fn is_assign_target(e Expr) bool {
 			return error('try statement needs an except or finally clause')
 		}
 		return TryStmt{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			body:      body
 			handlers:  handlers
 			orelse:    orelse
@@ -2608,6 +3296,7 @@ fn is_assign_target(e Expr) bool {
 	}
 
 	fn (mut p Parser) finish_star_try(body []Stmt, handlers []ExceptHandler) !Stmt {
+		start := p.curr
 		mut orelse := []Stmt{}
 		if p.curr.kind == .kw_else {
 			p.advance()!
@@ -2619,6 +3308,10 @@ fn is_assign_target(e Expr) bool {
 			finalbody = p.parse_suite(true)!
 		}
 		return TryStmt{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			body:      body
 			handlers:  handlers
 			orelse:    orelse
@@ -2628,6 +3321,7 @@ fn is_assign_target(e Expr) bool {
 	}
 
 	fn (mut p Parser) parse_with_stmt(is_async bool) !Stmt {
+		start := p.curr
 		p.expect(.kw_with)!
 		mut items := []WithItem{}
 		for {
@@ -2638,6 +3332,10 @@ fn is_assign_target(e Expr) bool {
 				vars = p.parse_test()!
 			}
 			items << WithItem{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				context_expr: context_expr
 				vars:         vars
 			}
@@ -2648,6 +3346,10 @@ fn is_assign_target(e Expr) bool {
 		}
 		body := p.parse_suite(true)!
 		return WithStmt{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			items:    items
 			body:     body
 			is_async: is_async
@@ -2655,6 +3357,7 @@ fn is_assign_target(e Expr) bool {
 	}
 
 fn (mut p Parser) parse_import_stmt() !Stmt {
+	start := p.curr
 	if p.curr.kind == .kw_from {
 		return p.parse_import_from_stmt()
 	}
@@ -2666,11 +3369,16 @@ fn (mut p Parser) parse_import_stmt() !Stmt {
 		names << p.parse_import_alias()!
 	}
 	return ImportStmt{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		names: names
 	}
 }
 
 fn (mut p Parser) parse_import_alias() !ImportAlias {
+	start := p.curr
 	mut name := ''
 	if p.curr.kind == .star {
 		name = '*'
@@ -2684,12 +3392,17 @@ fn (mut p Parser) parse_import_alias() !ImportAlias {
 		asname = p.parse_name_text() or { return error('expected name after as in import') }
 	}
 	return ImportAlias{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		name:   name
 		asname: asname
 	}
 }
 
 fn (mut p Parser) parse_import_from_stmt() !Stmt {
+	start := p.curr
 	p.expect(.kw_from)!
 	mut level := 0
 	for p.curr.kind == .dot {
@@ -2722,6 +3435,10 @@ fn (mut p Parser) parse_import_from_stmt() !Stmt {
 		p.expect(.rparen)!
 	}
 	return ImportFromStmt{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		module: mod_name
 		level:  level
 		names:  names
@@ -2742,6 +3459,7 @@ fn (mut p Parser) parse_dotted_name() !string {
 // xor, and, shifts, additive, multiplicative, unary (+/-/~/await), power
 // (**), postfix (calls, attributes, subscripts), primary.
 fn (mut p Parser) parse_expr() !Expr {
+	start := p.curr
 	first := p.parse_test()!
 	if p.curr.kind != .comma {
 		return first
@@ -2757,11 +3475,16 @@ fn (mut p Parser) parse_expr() !Expr {
 		elts << p.parse_test()!
 	}
 	return TupleExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		elts: elts
 	}
 }
 
 fn (mut p Parser) parse_test() !Expr {
+	start := p.curr
 	if p.curr.kind == .kw_lambda {
 		return p.parse_lambda_expr()
 	}
@@ -2771,6 +3494,10 @@ fn (mut p Parser) parse_test() !Expr {
 	if p.curr.kind == .star {
 		p.advance()!
 		return StarredExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			value: p.parse_namedexpr()!
 		}
 	}
@@ -2778,10 +3505,15 @@ fn (mut p Parser) parse_test() !Expr {
 }
 
 fn (mut p Parser) parse_namedexpr() !Expr {
+	start := p.curr
 	if is_name_token(p.curr.kind) && p.next.kind == .colon_assign {
 		target := p.parse_name_text()!
 		p.expect(.colon_assign)!
 		return NamedExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			target: target
 			value:  p.parse_namedexpr()!
 		}
@@ -2790,6 +3522,7 @@ fn (mut p Parser) parse_namedexpr() !Expr {
 }
 
 fn (mut p Parser) parse_ifexp() !Expr {
+	start := p.curr
 	body := p.parse_or_expr()!
 	if p.curr.kind != .kw_if {
 		return body
@@ -2798,6 +3531,10 @@ fn (mut p Parser) parse_ifexp() !Expr {
 	test := p.parse_or_expr()!
 	p.expect(.kw_else)!
 	return IfExpExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		test:   test
 		body:   body
 		orelse: p.parse_test()!
@@ -2805,6 +3542,7 @@ fn (mut p Parser) parse_ifexp() !Expr {
 }
 
 fn (mut p Parser) parse_or_expr() !Expr {
+	start := p.curr
 	mut left := p.parse_and_expr()!
 	if p.curr.kind != .kw_or {
 		return left
@@ -2815,12 +3553,17 @@ fn (mut p Parser) parse_or_expr() !Expr {
 		values << p.parse_and_expr()!
 	}
 	return BoolOpExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		op:     'Or'
 		values: values
 	}
 }
 
 fn (mut p Parser) parse_and_expr() !Expr {
+	start := p.curr
 	mut left := p.parse_not_expr()!
 	if p.curr.kind != .kw_and {
 		return left
@@ -2831,16 +3574,25 @@ fn (mut p Parser) parse_and_expr() !Expr {
 		values << p.parse_not_expr()!
 	}
 	return BoolOpExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		op:     'And'
 		values: values
 	}
 }
 
 fn (mut p Parser) parse_not_expr() !Expr {
+	start := p.curr
 	if p.curr.kind == .kw_not {
 		p.advance()!
 		operand := p.parse_not_expr()!
 		return UnaryExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			op:      'Not'
 			operand: operand
 		}
@@ -2849,6 +3601,7 @@ fn (mut p Parser) parse_not_expr() !Expr {
 }
 
 fn (mut p Parser) parse_comparison_expr() !Expr {
+	start := p.curr
 	mut left := p.parse_bitor()!
 	mut ops := []string{}
 	mut comparators := []Expr{}
@@ -2861,6 +3614,10 @@ fn (mut p Parser) parse_comparison_expr() !Expr {
 		return left
 	}
 	return CompareExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		left:        left
 		ops:         ops
 		comparators: comparators
@@ -2901,11 +3658,16 @@ fn (mut p Parser) comparison_op() ?string {
 }
 
 fn (mut p Parser) parse_bitor() !Expr {
+	start := p.curr
 	mut left := p.parse_bitxor()!
 	for p.curr.kind == .pipe && p.next.kind != .assign {
 		p.advance()!
 		right := p.parse_bitxor()!
 		left = BinaryExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			left:  left
 			op:    'BitOr'
 			right: right
@@ -2915,11 +3677,16 @@ fn (mut p Parser) parse_bitor() !Expr {
 }
 
 fn (mut p Parser) parse_bitxor() !Expr {
+	start := p.curr
 	mut left := p.parse_bitand()!
 	for p.curr.kind == .caret && p.next.kind != .assign {
 		p.advance()!
 		right := p.parse_bitand()!
 		left = BinaryExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			left:  left
 			op:    'BitXor'
 			right: right
@@ -2929,11 +3696,16 @@ fn (mut p Parser) parse_bitxor() !Expr {
 }
 
 fn (mut p Parser) parse_bitand() !Expr {
+	start := p.curr
 	mut left := p.parse_shift()!
 	for p.curr.kind == .amp && p.next.kind != .assign {
 		p.advance()!
 		right := p.parse_shift()!
 		left = BinaryExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			left:  left
 			op:    'BitAnd'
 			right: right
@@ -2943,12 +3715,17 @@ fn (mut p Parser) parse_bitand() !Expr {
 }
 
 fn (mut p Parser) parse_shift() !Expr {
+	start := p.curr
 	mut left := p.parse_additive()!
 	for (p.curr.kind == .lshift || p.curr.kind == .rshift) && p.next.kind != .assign {
 		op := if p.curr.kind == .lshift { 'LShift' } else { 'RShift' }
 		p.advance()!
 		right := p.parse_additive()!
 		left = BinaryExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			left:  left
 			op:    op
 			right: right
@@ -2958,12 +3735,17 @@ fn (mut p Parser) parse_shift() !Expr {
 }
 
 fn (mut p Parser) parse_additive() !Expr {
+	start := p.curr
 	mut left := p.parse_multiplicative()!
 	for (p.curr.kind == .plus || p.curr.kind == .minus) && p.next.kind != .assign {
 		op := if p.curr.kind == .plus { 'Add' } else { 'Sub' }
 		p.advance()!
 		right := p.parse_multiplicative()!
 		left = BinaryExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			left:  left
 			op:    op
 			right: right
@@ -2973,6 +3755,7 @@ fn (mut p Parser) parse_additive() !Expr {
 }
 
 fn (mut p Parser) parse_multiplicative() !Expr {
+	start := p.curr
 	mut left := p.parse_unary()!
 	for (p.curr.kind == .star || p.curr.kind == .slash || p.curr.kind == .floordiv
 		|| p.curr.kind == .percent || p.curr.kind == .at_sign) && p.next.kind != .assign {
@@ -2986,6 +3769,10 @@ fn (mut p Parser) parse_multiplicative() !Expr {
 		p.advance()!
 		right := p.parse_unary()!
 		left = BinaryExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			left:  left
 			op:    op
 			right: right
@@ -2995,9 +3782,14 @@ fn (mut p Parser) parse_multiplicative() !Expr {
 }
 
 fn (mut p Parser) parse_unary() !Expr {
+	start := p.curr
 	if p.curr.kind == .kw_await {
 		p.advance()!
 		return AwaitExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			value: p.parse_unary()!
 		}
 	}
@@ -3009,6 +3801,10 @@ fn (mut p Parser) parse_unary() !Expr {
 		}
 		p.advance()!
 		return UnaryExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			op:      op
 			operand: p.parse_power()!
 		}
@@ -3017,12 +3813,17 @@ fn (mut p Parser) parse_unary() !Expr {
 }
 
 fn (mut p Parser) parse_power() !Expr {
+	start := p.curr
 	base := p.parse_postfix()!
 	if p.curr.kind != .pow || p.next.kind == .assign {
 		return base
 	}
 	p.advance()!
 	return BinaryExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		left:  base
 		op:    'Pow'
 		right: p.parse_unary()!
@@ -3030,20 +3831,30 @@ fn (mut p Parser) parse_power() !Expr {
 }
 
 fn (mut p Parser) parse_lambda_expr() !Expr {
+	start := p.curr
 	p.expect(.kw_lambda)!
 	args := p.parse_params(true)!
 	p.expect(.colon)!
 	return LambdaExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		args: args
 		body: p.parse_test()!
 	}
 }
 
 fn (mut p Parser) parse_yield_expr() !Expr {
+	start := p.curr
 	p.expect(.kw_yield)!
 	if p.curr.kind == .kw_from {
 		p.advance()!
 		return YieldFromExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			value: p.parse_expr()!
 		}
 	}
@@ -3051,15 +3862,24 @@ fn (mut p Parser) parse_yield_expr() !Expr {
 		|| p.curr.kind == .rbracket || p.curr.kind == .rbrace || p.curr.kind == .comma
 		|| p.curr.kind == .colon || p.curr.kind == .fstr_field_close {
 		return YieldExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			value: none
 		}
 	}
 	return YieldExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		value: p.parse_expr()!
 	}
 }
 
 fn (mut p Parser) parse_postfix() !Expr {
+	start := p.curr
 	mut expr := p.parse_primary()!
 	for {
 		if p.curr.kind == .lparen {
@@ -3067,6 +3887,10 @@ fn (mut p Parser) parse_postfix() !Expr {
 			args, keywords := p.parse_call_args()!
 			p.expect(.rparen)!
 			expr = CallExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				func:     expr
 				args:     args
 				keywords: keywords
@@ -3081,6 +3905,10 @@ fn (mut p Parser) parse_postfix() !Expr {
 			attr := p.curr.text
 			p.advance()!
 			expr = AttributeExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				value: expr
 				attr:  attr
 			}
@@ -3091,6 +3919,10 @@ fn (mut p Parser) parse_postfix() !Expr {
 			slice := p.parse_subscript_slice()!
 			p.expect(.rbracket)!
 			expr = SubscriptExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				value: expr
 				slice: slice
 			}
@@ -3110,8 +3942,13 @@ fn (mut p Parser) parse_call_args() !([]Expr, []CallKeyword) {
 	mut seen_keyword := false
 	for {
 		if p.curr.kind == .pow {
+			pow_tok := p.curr
 			p.advance()!
 			keywords << CallKeyword{
+				line: pow_tok.line,
+				col: pow_tok.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				name:  none
 				value: p.parse_test()!
 			}
@@ -3120,16 +3957,26 @@ fn (mut p Parser) parse_call_args() !([]Expr, []CallKeyword) {
 			mut arg := p.parse_test()!
 			if p.curr.kind == .kw_for || (p.curr.kind == .kw_async && p.next.kind == .kw_for) {
 				generators := p.parse_comp_clauses()!
+				gen_line, gen_col := expr_start_pos(arg)
 				arg = GeneratorExpExpr{
+					line: gen_line,
+					col: gen_col,
+					end_line: p.prev_real.end_line,
+					end_col: p.prev_real.end_col,
 					elt:        arg
 					generators: generators
 				}
 			}
 			if p.curr.kind == .assign {
 				if arg is NameExpr {
+					kw_name := arg as NameExpr
 					p.advance()!
 					keywords << CallKeyword{
-						name:  (arg as NameExpr).name
+						line: kw_name.line,
+						col: kw_name.col,
+						end_line: p.prev_real.end_line,
+						end_col: p.prev_real.end_col,
+						name:  kw_name.name
 						value: p.parse_test()!
 					}
 					seen_keyword = true
@@ -3158,6 +4005,7 @@ fn (mut p Parser) parse_call_args() !([]Expr, []CallKeyword) {
 // parse_subscript_slice parses `a`, `a:b`, `:b`, `a:`, `::c`, `...`, and
 // comma-separated combinations (which form a Tuple).
 fn (mut p Parser) parse_subscript_slice() !Expr {
+	start := p.curr
 	mut items := []Expr{}
 	for {
 		if p.curr.kind == .colon {
@@ -3185,11 +4033,16 @@ fn (mut p Parser) parse_subscript_slice() !Expr {
 		return items[0]
 	}
 	return TupleExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		elts: items
 	}
 }
 
 fn (mut p Parser) parse_slice_rest(lower ?Expr) !Expr {
+	start := p.curr
 	p.expect(.colon)!
 	mut upper := ?Expr(none)
 	if p.curr.kind != .colon && p.curr.kind != .comma && p.curr.kind != .rbracket {
@@ -3203,6 +4056,10 @@ fn (mut p Parser) parse_slice_rest(lower ?Expr) !Expr {
 		}
 	}
 	return SliceExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		lower: lower
 		upper: upper
 		step:  step
@@ -3265,12 +4122,17 @@ fn (mut p Parser) parse_name_text() !string {
 }
 
 fn (mut p Parser) parse_primary() !Expr {
+	start := p.curr
 	if p.curr.kind == .kw_match {
 		state := p.save_state()
 		m := p.parse_match_expr() or {
 			p.restore_state(state)
 			p.advance()!
 			return NameExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				name: 'match'
 			}
 		}
@@ -3283,6 +4145,10 @@ fn (mut p Parser) parse_primary() !Expr {
 				}
 			p.advance()!
 			IntExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				value: value
 			}
 		}
@@ -3290,11 +4156,18 @@ fn (mut p Parser) parse_primary() !Expr {
 			text := p.curr.text
 			p.advance()!
 			FloatExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				text: text
 			}
 		}
 		.string_lit {
 			p.parse_string_atom()
+		}
+		.bytes_lit {
+			p.parse_bytes_atom()
 		}
 		.fstr_start {
 			p.parse_string_atom()
@@ -3303,34 +4176,60 @@ fn (mut p Parser) parse_primary() !Expr {
 			name := p.curr.text
 			p.advance()!
 			NameExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				name: name
 			}
 		}
 		.underscore {
 			p.advance()!
 			NameExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				name: '_'
 			}
 		}
 		.kw_true {
 			p.advance()!
 			BoolExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				value: true
 			}
 		}
 		.kw_false {
 			p.advance()!
 			BoolExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				value: false
 			}
 		}
 		.kw_none {
 			p.advance()!
-			NoneExpr{}
+			NoneExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
+			}
 		}
 		.ellipsis {
 			p.advance()!
-			EllipsisExpr{}
+			EllipsisExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
+			}
 		}
 		.lparen {
 			p.parse_paren_expr()
@@ -3347,6 +4246,24 @@ fn (mut p Parser) parse_primary() !Expr {
 	}
 }
 
+// parse_bytes_atom parses one bytes literal plus any immediately adjacent
+// ones, which Python merges into a single constant.
+fn (mut p Parser) parse_bytes_atom() !Expr {
+	start := p.curr
+	mut value := ''
+	for p.curr.kind == .bytes_lit {
+		value += p.curr.text
+		p.advance()!
+	}
+	return BytesExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
+		value: value
+	}
+}
+
 // parse_string_atom parses one string literal plus any immediately
 // adjacent ones. Plain neighbors merge into a single Constant, matching
 // builtin parsing; mixing in f-strings yields a JoinedStr.
@@ -3354,7 +4271,12 @@ fn (mut p Parser) parse_string_atom() !Expr {
 	mut parts := []Expr{}
 	for p.curr.kind == .string_lit || p.curr.kind == .fstr_start {
 		if p.curr.kind == .string_lit {
+			lit_tok := p.curr
 			parts << StringExpr{
+				line: lit_tok.line,
+				col: lit_tok.col,
+				end_line: lit_tok.end_line,
+				end_col: lit_tok.end_col,
 				value: p.curr.text
 			}
 			p.advance()!
@@ -3375,13 +4297,28 @@ fn merge_string_parts(parts []Expr) Expr {
 	mut values := []Expr{}
 	mut pending := ''
 	mut has_pending := false
+	mut pend_line := 0
+	mut pend_col := 0
+	mut pend_end_line := 0
+	mut pend_end_col := 0
 	for part in parts {
 		if part is StringExpr {
-			pending += (part as StringExpr).value
+			text_part := part as StringExpr
+			if !has_pending {
+				pend_line = text_part.line
+				pend_col = text_part.col
+			}
+			pend_end_line = text_part.end_line
+			pend_end_col = text_part.end_col
+			pending += text_part.value
 			has_pending = true
 		} else {
 			if has_pending {
 				values << StringExpr{
+					line: pend_line
+					col: pend_col
+					end_line: pend_end_line
+					end_col: pend_end_col
 					value: pending
 				}
 				pending = ''
@@ -3392,6 +4329,10 @@ fn merge_string_parts(parts []Expr) Expr {
 	}
 	if has_pending {
 		values << StringExpr{
+			line: pend_line
+			col: pend_col
+			end_line: pend_end_line
+			end_col: pend_end_col
 			value: pending
 		}
 	}
@@ -3400,16 +4341,105 @@ fn merge_string_parts(parts []Expr) Expr {
 			return values[0]
 		}
 	}
+	fl, fc := expr_start_pos(parts[0])
+	el, ec := expr_end_pos(parts[parts.len - 1])
 	return JoinedStrExpr{
+		line: fl
+		col: fc
+		end_line: el
+		end_col: ec
 		values: values
 	}
 }
 
+fn expr_start_pos(e Expr) (int, int) {
+	return match e {
+		AttributeExpr { e.line, e.col }
+		AwaitExpr { e.line, e.col }
+		BinaryExpr { e.line, e.col }
+		BoolExpr { e.line, e.col }
+		BoolOpExpr { e.line, e.col }
+		BytesExpr { e.line, e.col }
+		CallExpr { e.line, e.col }
+		CompareExpr { e.line, e.col }
+		DictCompExpr { e.line, e.col }
+		DictExpr { e.line, e.col }
+		EllipsisExpr { e.line, e.col }
+		FloatExpr { e.line, e.col }
+		FormattedValueExpr { e.line, e.col }
+		GeneratorExpExpr { e.line, e.col }
+		IfExpExpr { e.line, e.col }
+		IntExpr { e.line, e.col }
+		JoinedStrExpr { e.line, e.col }
+		LambdaExpr { e.line, e.col }
+		ListCompExpr { e.line, e.col }
+		ListExpr { e.line, e.col }
+		MatchExpr { e.line, e.col }
+		NameExpr { e.line, e.col }
+		NamedExpr { e.line, e.col }
+		NoneExpr { e.line, e.col }
+		SetCompExpr { e.line, e.col }
+		SetExpr { e.line, e.col }
+		SliceExpr { e.line, e.col }
+		StarredExpr { e.line, e.col }
+		StringExpr { e.line, e.col }
+		SubscriptExpr { e.line, e.col }
+		TupleExpr { e.line, e.col }
+		UnaryExpr { e.line, e.col }
+		YieldExpr { e.line, e.col }
+		YieldFromExpr { e.line, e.col }
+	}
+}
+
+fn expr_end_pos(e Expr) (int, int) {
+	return match e {
+		AttributeExpr { e.end_line, e.end_col }
+		AwaitExpr { e.end_line, e.end_col }
+		BinaryExpr { e.end_line, e.end_col }
+		BoolExpr { e.end_line, e.end_col }
+		BoolOpExpr { e.end_line, e.end_col }
+		BytesExpr { e.end_line, e.end_col }
+		CallExpr { e.end_line, e.end_col }
+		CompareExpr { e.end_line, e.end_col }
+		DictCompExpr { e.end_line, e.end_col }
+		DictExpr { e.end_line, e.end_col }
+		EllipsisExpr { e.end_line, e.end_col }
+		FloatExpr { e.end_line, e.end_col }
+		FormattedValueExpr { e.end_line, e.end_col }
+		GeneratorExpExpr { e.end_line, e.end_col }
+		IfExpExpr { e.end_line, e.end_col }
+		IntExpr { e.end_line, e.end_col }
+		JoinedStrExpr { e.end_line, e.end_col }
+		LambdaExpr { e.end_line, e.end_col }
+		ListCompExpr { e.end_line, e.end_col }
+		ListExpr { e.end_line, e.end_col }
+		MatchExpr { e.end_line, e.end_col }
+		NameExpr { e.end_line, e.end_col }
+		NamedExpr { e.end_line, e.end_col }
+		NoneExpr { e.end_line, e.end_col }
+		SetCompExpr { e.end_line, e.end_col }
+		SetExpr { e.end_line, e.end_col }
+		SliceExpr { e.end_line, e.end_col }
+		StarredExpr { e.end_line, e.end_col }
+		StringExpr { e.end_line, e.end_col }
+		SubscriptExpr { e.end_line, e.end_col }
+		TupleExpr { e.end_line, e.end_col }
+		UnaryExpr { e.end_line, e.end_col }
+		YieldExpr { e.end_line, e.end_col }
+		YieldFromExpr { e.end_line, e.end_col }
+	}
+}
+
 fn (mut p Parser) parse_paren_expr() !Expr {
+	start := p.curr
 	p.expect(.lparen)!
 	if p.curr.kind == .rparen {
 		p.advance()!
 		return TupleExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			elts: []Expr{}
 		}
 	}
@@ -3418,6 +4448,10 @@ fn (mut p Parser) parse_paren_expr() !Expr {
 		generators := p.parse_comp_clauses()!
 		p.expect(.rparen)!
 		return GeneratorExpExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			elt:        first
 			generators: generators
 		}
@@ -3436,15 +4470,24 @@ fn (mut p Parser) parse_paren_expr() !Expr {
 	}
 	p.expect(.rparen)!
 	return TupleExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		elts: elts
 	}
 }
 
 fn (mut p Parser) parse_list_expr() !Expr {
+	start := p.curr
 	p.expect(.lbracket)!
 	if p.curr.kind == .rbracket {
 		p.advance()!
 		return ListExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			elts: []Expr{}
 		}
 	}
@@ -3453,6 +4496,10 @@ fn (mut p Parser) parse_list_expr() !Expr {
 		generators := p.parse_comp_clauses()!
 		p.expect(.rbracket)!
 		return ListCompExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			elt:        first
 			generators: generators
 		}
@@ -3467,30 +4514,43 @@ fn (mut p Parser) parse_list_expr() !Expr {
 	}
 	p.expect(.rbracket)!
 	return ListExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		elts: elts
 	}
 }
 
 fn (mut p Parser) parse_dict_or_set_expr() !Expr {
+	start := p.curr
 	p.expect(.lbrace)!
 	if p.curr.kind == .rbrace {
 		p.advance()!
 		return DictExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			keys:   []?Expr{}
 			values: []Expr{}
 		}
 	}
 	if p.curr.kind == .pow {
-		return p.parse_dict_expr_none_key()
+		return p.parse_dict_expr_none_key(start)
 	}
 	first := p.parse_test()!
 	if p.curr.kind == .colon {
-		return p.parse_dict_expr(first)!
+		return p.parse_dict_expr(first, start)!
 	}
 	if p.curr.kind == .kw_for || (p.curr.kind == .kw_async && p.next.kind == .kw_for) {
 		generators := p.parse_comp_clauses()!
 		p.expect(.rbrace)!
 		return SetCompExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			elt:        first
 			generators: generators
 		}
@@ -3505,11 +4565,15 @@ fn (mut p Parser) parse_dict_or_set_expr() !Expr {
 	}
 	p.expect(.rbrace)!
 	return SetExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		elts: elts
 	}
 }
 
-fn (mut p Parser) parse_dict_expr(first Expr) !Expr {
+fn (mut p Parser) parse_dict_expr(first Expr, lbrace Token) !Expr {
 	p.expect(.colon)!
 	value := p.parse_test()!
 	mut keys := [?Expr(first)]
@@ -3518,6 +4582,10 @@ fn (mut p Parser) parse_dict_expr(first Expr) !Expr {
 		generators := p.parse_comp_clauses()!
 		p.expect(.rbrace)!
 		return DictCompExpr{
+			line: lbrace.line,
+			col: lbrace.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			key:        first
 			value:      value
 			generators: generators
@@ -3541,12 +4609,16 @@ fn (mut p Parser) parse_dict_expr(first Expr) !Expr {
 	}
 	p.expect(.rbrace)!
 	return DictExpr{
+		line: lbrace.line,
+		col: lbrace.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		keys:   keys
 		values: values
 	}
 }
 
-fn (mut p Parser) parse_dict_expr_none_key() !Expr {
+fn (mut p Parser) parse_dict_expr_none_key(lbrace Token) !Expr {
 	mut keys := []?Expr{}
 	mut values := []Expr{}
 	for {
@@ -3578,6 +4650,10 @@ fn (mut p Parser) parse_dict_expr_none_key() !Expr {
 	}
 	p.expect(.rbrace)!
 	return DictExpr{
+		line: lbrace.line,
+		col: lbrace.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		keys:   keys
 		values: values
 	}
@@ -3587,6 +4663,7 @@ fn (mut p Parser) parse_dict_expr_none_key() !Expr {
 	// mirrors parse_expr but never consumes a bare `in`, which would
 	// otherwise parse `for i in x` as a comparison.
 	fn (mut p Parser) parse_comp_target() !Expr {
+		start := p.curr
 		first := p.parse_comp_target_atom()!
 		if p.curr.kind != .comma {
 			return first
@@ -3602,14 +4679,23 @@ fn (mut p Parser) parse_dict_expr_none_key() !Expr {
 			elts << p.parse_comp_target_atom()!
 		}
 		return TupleExpr{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			elts: elts
 		}
 	}
 
 	fn (mut p Parser) parse_comp_target_atom() !Expr {
+		start := p.curr
 		if p.curr.kind == .star {
 			p.advance()!
 			return StarredExpr{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				value: p.parse_bitor()!
 			}
 		}
@@ -3617,6 +4703,7 @@ fn (mut p Parser) parse_dict_expr_none_key() !Expr {
 	}
 
 fn (mut p Parser) parse_comp_clauses() ![]ComprehensionClause {
+	start := p.curr
 	mut clauses := []ComprehensionClause{}
 	for p.curr.kind == .kw_for || (p.curr.kind == .kw_async && p.next.kind == .kw_for) {
 		mut is_async := false
@@ -3641,6 +4728,10 @@ fn (mut p Parser) parse_comp_clauses() ![]ComprehensionClause {
 			ifs << p.parse_or_expr()!
 		}
 		clauses << ComprehensionClause{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			target:   target
 			iter:     iter
 			ifs:      ifs
@@ -3654,6 +4745,7 @@ fn (mut p Parser) parse_comp_clauses() ![]ComprehensionClause {
 }
 
 fn (mut p Parser) parse_fstring_expr() !Expr {
+	start := p.curr
 	p.expect(.fstr_start)!
 	mut values := []Expr{}
 	for p.curr.kind != .fstr_end {
@@ -3661,13 +4753,19 @@ fn (mut p Parser) parse_fstring_expr() !Expr {
 			return error('unterminated f-string')
 		}
 		if p.curr.kind == .fstr_text {
+			text_tok := p.curr
 			values << StringExpr{
+				line: text_tok.line,
+				col: text_tok.col,
+				end_line: text_tok.end_line,
+				end_col: text_tok.end_col,
 				value: p.curr.text
 			}
 			p.advance()!
 			continue
 			}
 		if p.curr.kind == .fstr_field_open {
+			field_tok := p.curr
 			p.advance()!
 			value := p.parse_expr()!
 			mut conversion := -1
@@ -3677,9 +4775,18 @@ fn (mut p Parser) parse_fstring_expr() !Expr {
 			}
 			mut format_spec := ?Expr(none)
 			if p.curr.kind == .fstr_spec {
+				spec_tok := p.curr
 				format_spec = JoinedStrExpr{
+					line: spec_tok.line,
+					col: spec_tok.col,
+					end_line: spec_tok.end_line,
+					end_col: spec_tok.end_col,
 					values: [
 						Expr(StringExpr{
+							line: spec_tok.line,
+							col: spec_tok.col,
+							end_line: spec_tok.end_line,
+							end_col: spec_tok.end_col,
 							value: p.curr.text
 						}),
 					]
@@ -3688,6 +4795,10 @@ fn (mut p Parser) parse_fstring_expr() !Expr {
 			}
 			p.expect(.fstr_field_close)!
 			values << FormattedValueExpr{
+				line: field_tok.line,
+				col: field_tok.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				value:      value
 				conversion: conversion
 				format_spec: format_spec
@@ -3698,6 +4809,10 @@ fn (mut p Parser) parse_fstring_expr() !Expr {
 	}
 	p.expect(.fstr_end)!
 	return JoinedStrExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		values: values
 	}
 }
@@ -3712,6 +4827,7 @@ fn (mut p Parser) parse_match_expr() !Expr {
 }
 
 fn (mut p Parser) parse_indented_match_cases(subject Expr) !Expr {
+	start := p.curr
 	p.expect(.colon)!
 	p.expect(.newline)!
 	p.expect(.indent)!
@@ -3723,6 +4839,10 @@ fn (mut p Parser) parse_indented_match_cases(subject Expr) !Expr {
 		body := p.parse_match_case_body()!
 		p.consume_newlines()!
 		cases << MatchCase{
+			line: start.line,
+			col: start.col,
+			end_line: p.prev_real.end_line,
+			end_col: p.prev_real.end_col,
 			pattern: pattern
 			body:    body
 		}
@@ -3733,6 +4853,10 @@ fn (mut p Parser) parse_indented_match_cases(subject Expr) !Expr {
 	p.expect(.dedent)!
 	p.skip_stmt_newline = true
 	return MatchExpr{
+		line: start.line,
+		col: start.col,
+		end_line: p.prev_real.end_line,
+		end_col: p.prev_real.end_col,
 		subject: subject
 		cases:   cases
 	}
@@ -3763,15 +4887,25 @@ fn (mut p Parser) parse_match_case_body() !Expr {
 }
 
 fn (mut p Parser) parse_pattern() !Pattern {
+	start := p.curr
 	return match p.curr.kind {
 		.underscore {
 			p.advance()!
-			WildcardPattern{}
+			WildcardPattern{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
+			}
 		}
 		.int_lit {
 			value := strconv.atoi(p.curr.text) or { return error('invalid integer literal') }
 			p.advance()!
 			ValuePattern{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				value: value
 			}
 		}
@@ -3779,12 +4913,20 @@ fn (mut p Parser) parse_pattern() !Pattern {
 			name := p.curr.text
 			p.advance()!
 			BindPattern{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				name: name
 			}
 		}
 		.kw_match {
 			p.advance()!
 			BindPattern{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
 				name: 'match'
 			}
 		}
@@ -3812,6 +4954,9 @@ fn (mut p Parser) expect(kind TokenKind) ! {
 }
 
 fn (mut p Parser) advance() ! {
+	if p.curr.kind !in [.indent, .dedent, .newline, .eof] {
+		p.prev_real = p.curr
+	}
 	p.curr = p.next
 	p.next = p.lexer.next_token()!
 }
@@ -3855,7 +5000,7 @@ fn stmts_json(body []Stmt) string {
 }
 
 fn arg_json(a FunctionArg) string {
-	return '{"type":"arg","arg":"${json_escape(a.name)}","annotation":${opt_expr_json(a.annotation)}}'
+	return '{"type":"arg","arg":"${json_escape(a.name)}","annotation":${opt_expr_json(a.annotation)},"line":${a.line},"col":${a.col},"end_line":${a.end_line},"end_col":${a.end_col}}'
 }
 
 fn args_json(a FunctionArgs) string {
@@ -3887,14 +5032,14 @@ fn args_json(a FunctionArgs) string {
 	for d in a.defaults {
 		defaults << expr_json(d)
 	}
-	return '{"posonlyargs":[${posonly.join(',')}],"args":[${plain.join(',')}],"vararg":${vararg},"kwonlyargs":[${kwonly.join(',')}],"kw_defaults":[${kw_defaults.join(',')}],"kwarg":${kwarg},"defaults":[${defaults.join(',')}]}'
+	return '{"posonlyargs":[${posonly.join(',')}],"args":[${plain.join(',')}],"vararg":${vararg},"kwonlyargs":[${kwonly.join(',')}],"kw_defaults":[${kw_defaults.join(',')}],"kwarg":${kwarg},"defaults":[${defaults.join(',')}],"line":${a.line},"col":${a.col},"end_line":${a.end_line},"end_col":${a.end_col}}'
 }
 
 fn keyword_json(k CallKeyword) string {
 	if name := k.name {
-		return '{"arg":"${json_escape(name)}","value":${expr_json(k.value)}}'
+		return '{"arg":"${json_escape(name)}","value":${expr_json(k.value)},"line":${k.line},"col":${k.col},"end_line":${k.end_line},"end_col":${k.end_col}}'
 	}
-	return '{"arg":null,"value":${expr_json(k.value)}}'
+	return '{"arg":null,"value":${expr_json(k.value)},"line":${k.line},"col":${k.col},"end_line":${k.end_line},"end_col":${k.end_col}}'
 }
 
 fn comp_json(c ComprehensionClause) string {
@@ -3903,32 +5048,39 @@ fn comp_json(c ComprehensionClause) string {
 		ifs << expr_json(cond)
 	}
 	async_flag := if c.is_async { '1' } else { '0' }
-	return '{"type":"comprehension","target":${expr_json(c.target)},"iter":${expr_json(c.iter)},"ifs":[${ifs.join(',')}],"is_async":${async_flag}}'
+	return '{"type":"comprehension","target":${expr_json(c.target)},"iter":${expr_json(c.iter)},"ifs":[${ifs.join(',')}],"is_async":${async_flag},"line":${c.line},"col":${c.col},"end_line":${c.end_line},"end_col":${c.end_col}}'
 }
 
 fn expr_json(expr Expr) string {
 	return match expr {
 		IntExpr {
-			'{"type":"Constant","value":${expr.value}}'
+			'{"type":"Constant","value":${expr.value},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		FloatExpr {
-			'{"type":"Float","value":${expr.text}}'
+			'{"type":"Float","value":${expr.text},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		StringExpr {
-			'{"type":"Constant","value":"${json_escape(expr.value)}"}'
+			'{"type":"Constant","value":"${json_escape(expr.value)}","line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
+		}
+		BytesExpr {
+			mut byte_parts := []string{}
+			for b in expr.value.bytes() {
+				byte_parts << b.str()
+			}
+			'{"type":"Bytes","value":[${byte_parts.join(',')}],"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		BoolExpr {
 			val := if expr.value { 'true' } else { 'false' }
-			'{"type":"Constant","value":${val}}'
+			'{"type":"Constant","value":${val},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		NoneExpr {
-			'{"type":"Constant","value":null}'
+			'{"type":"Constant","value":null,"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		EllipsisExpr {
-			'{"type":"Ellipsis"}'
+			'{"type":"Ellipsis","line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		NameExpr {
-			'{"type":"Name","id":"${json_escape(expr.name)}"}'
+			'{"type":"Name","id":"${json_escape(expr.name)}","line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		CallExpr {
 			mut call_args_json := []string{}
@@ -3939,32 +5091,32 @@ fn expr_json(expr Expr) string {
 			for k in expr.keywords {
 				kw_json << keyword_json(k)
 			}
-			'{"type":"Call","func":${expr_json(expr.func)},"args":[${call_args_json.join(',')}],"keywords":[${kw_json.join(',')}]} '
+			'{"type":"Call","func":${expr_json(expr.func)},"args":[${call_args_json.join(',')}],"keywords":[${kw_json.join(',')}],"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col} }'
 		}
 		AttributeExpr {
-			'{"type":"Attribute","value":${expr_json(expr.value)},"attr":"${json_escape(expr.attr)}"}'
+			'{"type":"Attribute","value":${expr_json(expr.value)},"attr":"${json_escape(expr.attr)}","line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		SubscriptExpr {
-			'{"type":"Subscript","value":${expr_json(expr.value)},"slice":${expr_json(expr.slice)}}'
+			'{"type":"Subscript","value":${expr_json(expr.value)},"slice":${expr_json(expr.slice)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		StarredExpr {
-			'{"type":"Starred","value":${expr_json(expr.value)}}'
+			'{"type":"Starred","value":${expr_json(expr.value)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		SliceExpr {
-			'{"type":"Slice","lower":${opt_expr_json(expr.lower)},"upper":${opt_expr_json(expr.upper)},"step":${opt_expr_json(expr.step)}}'
+			'{"type":"Slice","lower":${opt_expr_json(expr.lower)},"upper":${opt_expr_json(expr.upper)},"step":${opt_expr_json(expr.step)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		UnaryExpr {
-			'{"type":"UnaryOp","op":"${expr.op}","operand":${expr_json(expr.operand)}}'
+			'{"type":"UnaryOp","op":"${expr.op}","operand":${expr_json(expr.operand)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		BinaryExpr {
-			'{"type":"BinOp","left":${expr_json(expr.left)},"op":"${expr.op}","right":${expr_json(expr.right)}}'
+			'{"type":"BinOp","left":${expr_json(expr.left)},"op":"${expr.op}","right":${expr_json(expr.right)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		BoolOpExpr {
 			mut values_json := []string{}
 			for v in expr.values {
 				values_json << expr_json(v)
 			}
-			'{"type":"BoolOp","op":"${expr.op}","values":[${values_json.join(',')}]} '
+			'{"type":"BoolOp","op":"${expr.op}","values":[${values_json.join(',')}],"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col} }'
 		}
 		CompareExpr {
 			mut ops_json := []string{}
@@ -3975,34 +5127,34 @@ fn expr_json(expr Expr) string {
 			for c in expr.comparators {
 				cmps_json << expr_json(c)
 			}
-			'{"type":"Compare","left":${expr_json(expr.left)},"ops":[${ops_json.join(',')}],"comparators":[${cmps_json.join(',')}]} '
+			'{"type":"Compare","left":${expr_json(expr.left)},"ops":[${ops_json.join(',')}],"comparators":[${cmps_json.join(',')}],"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col} }'
 			}
 		IfExpExpr {
-			'{"type":"IfExp","test":${expr_json(expr.test)},"body":${expr_json(expr.body)},"orelse":${expr_json(expr.orelse)}}'
+			'{"type":"IfExp","test":${expr_json(expr.test)},"body":${expr_json(expr.body)},"orelse":${expr_json(expr.orelse)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		NamedExpr {
-			'{"type":"NamedExpr","target":"${json_escape(expr.target)}","value":${expr_json(expr.value)}}'
+			'{"type":"NamedExpr","target":"${json_escape(expr.target)}","value":${expr_json(expr.value)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		LambdaExpr {
-			'{"type":"Lambda","args":${args_json(expr.args)},"body":${expr_json(expr.body)}}'
+			'{"type":"Lambda","args":${args_json(expr.args)},"body":${expr_json(expr.body)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		YieldExpr {
-			'{"type":"Yield","value":${opt_expr_json(expr.value)}}'
+			'{"type":"Yield","value":${opt_expr_json(expr.value)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		YieldFromExpr {
-			'{"type":"YieldFrom","value":${expr_json(expr.value)}}'
+			'{"type":"YieldFrom","value":${expr_json(expr.value)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		AwaitExpr {
-			'{"type":"Await","value":${expr_json(expr.value)}}'
+			'{"type":"Await","value":${expr_json(expr.value)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		ListExpr {
-			'{"type":"List","elts":${exprs_json(expr.elts)}}'
+			'{"type":"List","elts":${exprs_json(expr.elts)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		TupleExpr {
-			'{"type":"Tuple","elts":${exprs_json(expr.elts)}}'
+			'{"type":"Tuple","elts":${exprs_json(expr.elts)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		SetExpr {
-			'{"type":"Set","elts":${exprs_json(expr.elts)}}'
+			'{"type":"Set","elts":${exprs_json(expr.elts)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		DictExpr {
 			mut keys_json := []string{}
@@ -4013,130 +5165,130 @@ fn expr_json(expr Expr) string {
 			for v in expr.values {
 				values_json << expr_json(v)
 			}
-			'{"type":"Dict","keys":[${keys_json.join(',')}],"values":[${values_json.join(',')}]} '
+			'{"type":"Dict","keys":[${keys_json.join(',')}],"values":[${values_json.join(',')}],"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col} }'
 			}
 		ListCompExpr {
 			mut gen_json := []string{}
 			for g in expr.generators {
 				gen_json << comp_json(g)
 			}
-			'{"type":"ListComp","elt":${expr_json(expr.elt)},"generators":[${gen_json.join(',')}]} '
+			'{"type":"ListComp","elt":${expr_json(expr.elt)},"generators":[${gen_json.join(',')}],"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col} }'
 			}
 		SetCompExpr {
 			mut gen_json := []string{}
 			for g in expr.generators {
 				gen_json << comp_json(g)
 			}
-			'{"type":"SetComp","elt":${expr_json(expr.elt)},"generators":[${gen_json.join(',')}]} '
+			'{"type":"SetComp","elt":${expr_json(expr.elt)},"generators":[${gen_json.join(',')}],"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col} }'
 			}
 		GeneratorExpExpr {
 			mut gen_json := []string{}
 			for g in expr.generators {
 				gen_json << comp_json(g)
 			}
-			'{"type":"GeneratorExp","elt":${expr_json(expr.elt)},"generators":[${gen_json.join(',')}]} '
+			'{"type":"GeneratorExp","elt":${expr_json(expr.elt)},"generators":[${gen_json.join(',')}],"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col} }'
 			}
 		DictCompExpr {
 			mut gen_json := []string{}
 			for g in expr.generators {
 				gen_json << comp_json(g)
 			}
-			'{"type":"DictComp","key":${expr_json(expr.key)},"value":${expr_json(expr.value)},"generators":[${gen_json.join(',')}]} '
+			'{"type":"DictComp","key":${expr_json(expr.key)},"value":${expr_json(expr.value)},"generators":[${gen_json.join(',')}],"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col} }'
 			}
 		JoinedStrExpr {
-			'{"type":"JoinedStr","values":${exprs_json(expr.values)}}'
+			'{"type":"JoinedStr","values":${exprs_json(expr.values)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		FormattedValueExpr {
-			'{"type":"FormattedValue","value":${expr_json(expr.value)},"conversion":${expr.conversion},"format_spec":${opt_expr_json(expr.format_spec)}}'
+			'{"type":"FormattedValue","value":${expr_json(expr.value)},"conversion":${expr.conversion},"format_spec":${opt_expr_json(expr.format_spec)},"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col}}'
 		}
 		MatchExpr {
 			mut cases_json := []string{}
 			for item in expr.cases {
-				cases_json << '{"type":"match_case","pattern":${pattern_json(item.pattern)},"body":${expr_json(item.body)}}'
+				cases_json << '{"type":"match_case","pattern":${pattern_json(item.pattern)},"body":${expr_json(item.body)},"line":${item.line},"col":${item.col},"end_line":${item.end_line},"end_col":${item.end_col}}'
 			}
-			'{"type":"Match","subject":${expr_json(expr.subject)},"cases":[${cases_json.join(',')}]} '
+			'{"type":"Match","subject":${expr_json(expr.subject)},"cases":[${cases_json.join(',')}],"line":${expr.line},"col":${expr.col},"end_line":${expr.end_line},"end_col":${expr.end_col} }'
 			}
 	}
 }
 
 fn pattern_json(pattern Pattern) string {
 	return match pattern {
-		WildcardPattern { '{"type":"MatchAs","name":null}' }
-		BindPattern { '{"type":"MatchAs","name":"${json_escape(pattern.name)}"}' }
-		ValuePattern { '{"type":"MatchValue","value":{"type":"Constant","value":${pattern.value}}}' }
+		WildcardPattern { '{"type":"MatchAs","name":null,"line":${pattern.line},"col":${pattern.col},"end_line":${pattern.end_line},"end_col":${pattern.end_col}}' }
+		BindPattern { '{"type":"MatchAs","name":"${json_escape(pattern.name)}","line":${pattern.line},"col":${pattern.col},"end_line":${pattern.end_line},"end_col":${pattern.end_col}}' }
+		ValuePattern { '{"type":"MatchValue","value":{"type":"Constant","value":${pattern.value}},"line":${pattern.line},"col":${pattern.col},"end_line":${pattern.end_line},"end_col":${pattern.end_col}}' }
 	}
 }
 
 fn alias_json(alias ImportAlias) string {
 	if alias.asname == '' {
-		return '{"type":"alias","name":"${json_escape(alias.name)}","asname":null}'
+		return '{"type":"alias","name":"${json_escape(alias.name)}","asname":null,"line":${alias.line},"col":${alias.col},"end_line":${alias.end_line},"end_col":${alias.end_col}}'
 	}
-	return '{"type":"alias","name":"${json_escape(alias.name)}","asname":"${json_escape(alias.asname)}"}'
+	return '{"type":"alias","name":"${json_escape(alias.name)}","asname":"${json_escape(alias.asname)}","line":${alias.line},"col":${alias.col},"end_line":${alias.end_line},"end_col":${alias.end_col}}'
 }
 
 fn stmt_json(stmt Stmt) string {
 	return match stmt {
 		ExprStmt {
-			'{"type":"Expr","value":${expr_json(stmt.value)}}'
+			'{"type":"Expr","value":${expr_json(stmt.value)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col}}'
 		}
 		ImportStmt {
 			mut names_json := []string{}
 			for n in stmt.names {
 				names_json << alias_json(n)
 			}
-			'{"type":"Import","names":[${names_json.join(',')}]} '
+			'{"type":"Import","names":[${names_json.join(',')}],"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col} }'
 		}
 		ImportFromStmt {
 			mut names_json := []string{}
 			for n in stmt.names {
 				names_json << alias_json(n)
 			}
-			'{"type":"ImportFrom","module":"${json_escape(stmt.module)}","level":${stmt.level},"names":[${names_json.join(',')}]} '
+			'{"type":"ImportFrom","module":"${json_escape(stmt.module)}","level":${stmt.level},"names":[${names_json.join(',')}],"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col} }'
 			}
 		AssignStmt {
-			'{"type":"Assign","targets":${exprs_json(stmt.targets)},"value":${expr_json(stmt.value)}}'
+			'{"type":"Assign","targets":${exprs_json(stmt.targets)},"value":${expr_json(stmt.value)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col}}'
 		}
 		AugAssignStmt {
-			'{"type":"AugAssign","target":${expr_json(stmt.target)},"op":"${stmt.op}","value":${expr_json(stmt.value)}}'
+			'{"type":"AugAssign","target":${expr_json(stmt.target)},"op":"${stmt.op}","value":${expr_json(stmt.value)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col}}'
 		}
 		AnnAssignStmt {
 			simple_flag := if stmt.simple { '1' } else { '0' }
-			'{"type":"AnnAssign","target":${expr_json(stmt.target)},"annotation":${expr_json(stmt.annotation)},"value":${opt_expr_json(stmt.value)},"simple":${simple_flag}}'
+			'{"type":"AnnAssign","target":${expr_json(stmt.target)},"annotation":${expr_json(stmt.annotation)},"value":${opt_expr_json(stmt.value)},"simple":${simple_flag},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col}}'
 		}
 		PassStmt {
-			'{"type":"Pass"}'
+			'{"type":"Pass","line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col}}'
 		}
 		BreakStmt {
-			'{"type":"Break"}'
+			'{"type":"Break","line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col}}'
 		}
 		ContinueStmt {
-			'{"type":"Continue"}'
+			'{"type":"Continue","line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col}}'
 		}
 		ReturnStmt {
-			'{"type":"Return","value":${opt_expr_json(stmt.value)}}'
+			'{"type":"Return","value":${opt_expr_json(stmt.value)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col}}'
 		}
 		AssertStmt {
-			'{"type":"Assert","test":${expr_json(stmt.test)},"msg":${opt_expr_json(stmt.msg)}}'
+			'{"type":"Assert","test":${expr_json(stmt.test)},"msg":${opt_expr_json(stmt.msg)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col}}'
 		}
 		DeleteStmt {
-			'{"type":"Delete","targets":${exprs_json(stmt.targets)}}'
+			'{"type":"Delete","targets":${exprs_json(stmt.targets)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col}}'
 		}
 		RaiseStmt {
-			'{"type":"Raise","exc":${opt_expr_json(stmt.exc)},"cause":${opt_expr_json(stmt.cause)}}'
+			'{"type":"Raise","exc":${opt_expr_json(stmt.exc)},"cause":${opt_expr_json(stmt.cause)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col}}'
 		}
 		GlobalStmt {
 			mut names_json := []string{}
 			for n in stmt.names {
 				names_json << '"${json_escape(n)}"'
 			}
-			'{"type":"Global","names":[${names_json.join(',')}]} '
+			'{"type":"Global","names":[${names_json.join(',')}],"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col} }'
 			}
 		NonlocalStmt {
 			mut names_json := []string{}
 			for n in stmt.names {
 				names_json << '"${json_escape(n)}"'
 			}
-			'{"type":"Nonlocal","names":[${names_json.join(',')}]} '
+			'{"type":"Nonlocal","names":[${names_json.join(',')}],"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col} }'
 			}
 		TryStmt {
 			mut handlers_json := []string{}
@@ -4144,7 +5296,7 @@ fn stmt_json(stmt Stmt) string {
 				handlers_json << except_json(h)
 			}
 			typ := if stmt.is_star { 'TryStar' } else { 'Try' }
-			'{"type":"${typ}","body":${stmts_json(stmt.body)},"handlers":[${handlers_json.join(',')}],"orelse":${stmts_json(stmt.orelse)},"finalbody":${stmts_json(stmt.finalbody)}} '
+			'{"type":"${typ}","body":${stmts_json(stmt.body)},"handlers":[${handlers_json.join(',')}],"orelse":${stmts_json(stmt.orelse)},"finalbody":${stmts_json(stmt.finalbody)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col} }'
 			}
 		WithStmt {
 			mut items_json := []string{}
@@ -4152,17 +5304,17 @@ fn stmt_json(stmt Stmt) string {
 				items_json << withitem_json(item)
 			}
 			typ := if stmt.is_async { 'AsyncWith' } else { 'With' }
-			'{"type":"${typ}","items":[${items_json.join(',')}],"body":${stmts_json(stmt.body)}} '
+			'{"type":"${typ}","items":[${items_json.join(',')}],"body":${stmts_json(stmt.body)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col} }'
 			}
 		IfStmt {
-			'{"type":"If","test":${expr_json(stmt.test)},"body":${stmts_json(stmt.body)},"orelse":${stmts_json(stmt.orelse)}} '
+			'{"type":"If","test":${expr_json(stmt.test)},"body":${stmts_json(stmt.body)},"orelse":${stmts_json(stmt.orelse)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col} }'
 			}
 		WhileStmt {
-			'{"type":"While","test":${expr_json(stmt.test)},"body":${stmts_json(stmt.body)},"orelse":${stmts_json(stmt.orelse)}} '
+			'{"type":"While","test":${expr_json(stmt.test)},"body":${stmts_json(stmt.body)},"orelse":${stmts_json(stmt.orelse)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col} }'
 			}
 		ForStmt {
 			typ := if stmt.is_async { 'AsyncFor' } else { 'For' }
-			'{"type":"${typ}","target":${expr_json(stmt.target)},"iter":${expr_json(stmt.iter)},"body":${stmts_json(stmt.body)},"orelse":${stmts_json(stmt.orelse)}} '
+			'{"type":"${typ}","target":${expr_json(stmt.target)},"iter":${expr_json(stmt.iter)},"body":${stmts_json(stmt.body)},"orelse":${stmts_json(stmt.orelse)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col} }'
 			}
 		FunctionDefStmt {
 			typ := if stmt.is_async { 'AsyncFunctionDef' } else { 'FunctionDef' }
@@ -4170,7 +5322,7 @@ fn stmt_json(stmt Stmt) string {
 			for d in stmt.decorator_list {
 				deco_json << expr_json(d)
 			}
-			'{"type":"${typ}","name":"${json_escape(stmt.name)}","args":${args_json(stmt.args)},"body":${stmts_json(stmt.body)},"decorator_list":[${deco_json.join(',')}],"returns":${opt_expr_json(stmt.returns)}} '
+			'{"type":"${typ}","name":"${json_escape(stmt.name)}","args":${args_json(stmt.args)},"body":${stmts_json(stmt.body)},"decorator_list":[${deco_json.join(',')}],"returns":${opt_expr_json(stmt.returns)},"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col} }'
 			}
 		ClassDefStmt {
 			mut bases_json := []string{}
@@ -4185,18 +5337,18 @@ fn stmt_json(stmt Stmt) string {
 			for d in stmt.decorator_list {
 				deco_json << expr_json(d)
 			}
-			'{"type":"ClassDef","name":"${json_escape(stmt.name)}","bases":[${bases_json.join(',')}],"keywords":[${kw_json.join(',')}],"body":${stmts_json(stmt.body)},"decorator_list":[${deco_json.join(',')}]} '
+			'{"type":"ClassDef","name":"${json_escape(stmt.name)}","bases":[${bases_json.join(',')}],"keywords":[${kw_json.join(',')}],"body":${stmts_json(stmt.body)},"decorator_list":[${deco_json.join(',')}],"line":${stmt.line},"col":${stmt.col},"end_line":${stmt.end_line},"end_col":${stmt.end_col} }'
 			}
 	}
 }
 
 fn except_json(h ExceptHandler) string {
 	name_json := if h.name == '' { 'null' } else { '"${json_escape(h.name)}"' }
-	return '{"type":"ExceptHandler","typ":${opt_expr_json(h.typ)},"name":${name_json},"body":${stmts_json(h.body)}}'
+	return '{"type":"ExceptHandler","typ":${opt_expr_json(h.typ)},"name":${name_json},"body":${stmts_json(h.body)},"line":${h.line},"col":${h.col},"end_line":${h.end_line},"end_col":${h.end_col}}'
 }
 
 fn withitem_json(item WithItem) string {
-	return '{"type":"withitem","context_expr":${expr_json(item.context_expr)},"vars":${opt_expr_json(item.vars)}}'
+	return '{"type":"withitem","context_expr":${expr_json(item.context_expr)},"vars":${opt_expr_json(item.vars)},"line":${item.line},"col":${item.col},"end_line":${item.end_line},"end_col":${item.end_col}}'
 }
 
 fn module_json(mod Module) string {

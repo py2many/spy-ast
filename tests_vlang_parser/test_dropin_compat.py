@@ -29,6 +29,10 @@ SUPPORTED_SOURCES = [
     "x = 0b101\n",
     "x = 1e-3\n",
     "x = ...\n",
+    "x = 1; y = 2\n",
+    "x = 1;\n",
+    "x = 1; y = 2; z = 3\n",
+    "def f():\n    x = 1; return x\n",
     "x: int = 1\n",
     "x: int\n",
     "x: List[int] = []\n",
@@ -124,6 +128,10 @@ SUPPORTED_SOURCES = [
     "x = f'{x + 1}'\n",
     "x = f'{\"k\"}'\n",
     "x = r'raw\\n'\n",
+    "x = b'bytes'\n",
+    'x = b"\\xbbfoo"\n',
+    "x = br'raw'\n",
+    "x = b'a' b'b'\n",
     "x = 'a'\n",
     "x = None\n",
     "x = not a or b and c\n",
@@ -196,12 +204,10 @@ SUPPORTED_EXPRESSIONS = [
 # Valid Python outside the strict subset. Rejecting these is deliberate;
 # parsing must fail loudly with SyntaxError, never degrade the tree.
 REJECTED_SOURCES = [
-    "x = b'bytes'\n",
     "x = 1j\n",
     "x = (1+2j)\n",
     "x = f'{v:{w}}'\n",
     "x = f'{x=}'\n",
-    "x = 1; y = 2\n",
     "match x:\n    case 1:\n        pass\n",
 ]
 
