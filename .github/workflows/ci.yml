@@ -93,9 +93,11 @@ jobs:
           - os: macos
             platform: arm64
             runner: macos-latest
+            vflags: "-cc clang"
           - os: windows
             platform: amd64
             runner: windows-latest
+            vflags: ""
 
     steps:
       - name: Check out repository
@@ -158,7 +160,38 @@ jobs:
 
       - name: Build wheel
         if: matrix.target.os != 'linux'
+        env:
+          VFLAGS: ${{ matrix.target.vflags }}
         run: uv build --wheel --out-dir wheelhouse
+
+      - name: Smoke test wheel (macOS standalone check)
+        if: matrix.target.os == 'macos'
+        shell: bash
+        run: |
+          ls wheelhouse/*.whl
+          if otool -L wheelhouse/*.whl 2>/dev/null; then true; fi
+          TMPD="$(mktemp -d)"
+          unzip -q wheelhouse/*.whl -d "$TMPD/wheel"
+          echo "--- otool lib ---"
+          otool -L "$TMPD/wheel/spy_ast/libpyast_parser.dylib"
+          echo "--- otool bin ---"
+          otool -L "$TMPD/wheel/spy_ast/_bin/pyast_parser"
+          if otool -L "$TMPD/wheel/spy_ast/libpyast_parser.dylib" | grep -q '@rpath/libgc'; then
+            echo "REJECT: libpyast_parser.dylib links @rpath/libgc.dylib" >&2
+            exit 1
+          fi
+          if otool -L "$TMPD/wheel/spy_ast/_bin/pyast_parser" | grep -q '@rpath/libgc'; then
+            echo "REJECT: pyast_parser links @rpath/libgc.dylib" >&2
+            exit 1
+          fi
+          if otool -l "$TMPD/wheel/spy_ast/_bin/pyast_parser" | grep -q '_temp/vlang'; then
+            echo "REJECT: pyast_parser LC_RPATH points at CI temp dir" >&2
+            exit 1
+          fi
+          rm -rf "$TMPD"
+          python -m venv "$RUNNER_TEMP/smoke-venv"
+          "$RUNNER_TEMP/smoke-venv/bin/pip" install wheelhouse/*.whl
+          "$RUNNER_TEMP/smoke-venv/bin/python" -c "import spy_ast; spy_ast.parse('x = 1'); print('spy_ast parse OK')"
 
       - name: Build manylinux wheel
         if: matrix.target.os == 'linux'

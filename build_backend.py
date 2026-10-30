@@ -25,7 +25,7 @@ import zipfile
 
 
 NAME = "spy-ast"
-VERSION = "0.1.5"
+VERSION = "0.1.6"
 ROOT = pathlib.Path(__file__).resolve().parent
 PACKAGE_DIR = ROOT / "spy_ast"
 VSRC_DIR = ROOT
@@ -53,6 +53,26 @@ def _platform_tag() -> str:
             return "manylinux_2_34_x86_64"
         if platform == "linux_aarch64":
             return "manylinux_2_34_aarch64"
+    if sys.platform == "darwin" and "universal2" in platform:
+        # V emits a single-arch binary for the build host (arm64 on
+        # macos-latest, x86_64 on older Intel runners). Tagging it
+        # universal2 lies to pip: an Intel Mac would install an arm64-only
+        # binary (or vice versa) and fail at import/dlopen time. Report the
+        # real host arch instead. True fat binaries (lipo) can re-enable
+        # universal2 once the backend actually produces them.
+        # Note: arm64 macOS starts at 11.0, so a 10.x deployment target
+        # carried over from the universal2 tag (e.g. macosx_10_13_arm64)
+        # is invalid and rejected by installers (uv). Bump to 11.0.
+        import platform as _plat
+        import re as _re
+
+        machine = _plat.machine().lower()
+        arch = "arm64" if machine in ("arm64", "aarch64") else "x86_64"
+        platform = platform.replace("universal2", arch)
+        if arch == "arm64":
+            m = _re.match(r"macosx_(\d+)_(\d+)_arm64", platform)
+            if m and (int(m.group(1)), int(m.group(2))) < (11, 0):
+                platform = "macosx_11_0_arm64"
     return platform
 
 
@@ -164,14 +184,62 @@ def _vflags_for_native() -> list[str]:
     ubuntu-24.04 with ``undefined symbol: tcc_backtrace`` (py2many#857
     attempt #3, 44 failures, all ``-k rust``). Forcing ``-cc gcc`` plus
     ``-d no_backtrace`` avoids the TCC runtime entirely. Only applied on
-    Linux and only if the caller did not already select a compiler."""
+    Linux and only if the caller did not already select a compiler.
+
+    On macOS the downloaded V distribution (v_macos_arm64.zip) links via
+    its bundled TCC by default, producing binaries with
+    ``@rpath/libgc.dylib`` and ``LC_RPATH /Users/runner/work/_temp/vlang/v/``
+    baked in. That path only exists on the CI builder, so every 0.1.5
+    macOS wheel fails at runtime with ``dyld: Library not loaded:
+    @rpath/libgc.dylib`` (py2many ``-k rust``: 43 failures). Forcing
+    ``-cc clang`` links the system/bundled libgc statically (as the
+    Homebrew V does locally) and yields a standalone binary with only a
+    libSystem dependency. Only applied on macOS when the caller did not
+    already select a compiler."""
     flags = _vflags()
     if sys.platform.startswith("linux"):
         if not any(f == "-cc" or f.startswith("-cc=") for f in flags):
             flags = ["-cc", "gcc", *flags]
         if "no_backtrace" not in flags:
             flags = ["-d", "no_backtrace", *flags]
+    elif sys.platform == "darwin":
+        if not any(f == "-cc" or f.startswith("-cc=") for f in flags):
+            flags = ["-cc", "clang", *flags]
     return flags
+
+
+def _assert_macos_standalone(path: pathlib.Path) -> None:
+    """Fail fast if a macOS artifact needs CI-only dynamic libraries.
+
+    The 0.1.5 macOS wheels shipped binaries with
+    ``@rpath/libgc.dylib`` + ``LC_RPATH .../work/_temp/vlang/...`` which
+    only exists on the GitHub Actions builder. Catch that here so a broken
+    wheel never reaches PyPI. ``otool`` is always present on macOS
+    builders; a missing tool is a no-op."""
+    if sys.platform != "darwin":
+        return
+    otool = shutil.which("otool")
+    if otool is None:
+        return
+    proc = subprocess.run(
+        [otool, "-L", str(path)], check=False, text=True, capture_output=True
+    )
+    if proc.returncode != 0:
+        return
+    output = proc.stdout
+    if "@rpath/libgc.dylib" in output:
+        raise RuntimeError(
+            f"{path.name}: links @rpath/libgc.dylib; "
+            "build with -cc clang for a static libgc"
+        )
+    rproc = subprocess.run(
+        [otool, "-l", str(path)], check=False, text=True, capture_output=True
+    )
+    if rproc.returncode == 0 and ("/Users/runner" in rproc.stdout or "_temp/vlang" in rproc.stdout):
+        raise RuntimeError(
+            f"{path.name}: LC_RPATH points at CI builder temp dir; "
+            "build with -cc clang for a standalone binary"
+        )
 
 
 def _build_shared_library() -> tuple[str, bytes]:
@@ -186,6 +254,7 @@ def _build_shared_library() -> tuple[str, bytes]:
         )
         _run_checked(cmd, cwd=ROOT)
         _assert_no_tcc_symbols(out)
+        _assert_macos_standalone(out)
         return libname, out.read_bytes()
 
 
@@ -200,6 +269,7 @@ def _build_binary() -> tuple[str, bytes]:
             temp_dir,
         )
         _run_checked(cmd, cwd=ROOT)
+        _assert_macos_standalone(out)
         _remove_gnu_property_note(out)
         return out.name, out.read_bytes()
 
