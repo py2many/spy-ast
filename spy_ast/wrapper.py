@@ -117,8 +117,16 @@ def _coerce_text(source: str | bytes | bytearray) -> str:
 
 def _run_parser(mode: str, source: str) -> dict[str, Any]:
     if _vext is not None:
-        payload = _vext.parse_json(mode, source, str(PKG_DIR))
-        return json.loads(payload)
+        try:
+            payload = _vext.parse_json(mode, source, str(PKG_DIR))
+        except Exception:
+            # The 0.1.3 manylinux wheels ship a libpyast_parser.so with an
+            # undefined tcc_backtrace symbol, so dlopen() fails on Linux.
+            # Fall through to the bundled _bin/pyast_parser executable,
+            # which is statically linked and unaffected.
+            pass
+        else:
+            return json.loads(payload)
 
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as handle:
         path = Path(handle.name)

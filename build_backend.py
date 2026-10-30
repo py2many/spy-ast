@@ -25,7 +25,7 @@ import zipfile
 
 
 NAME = "spy-ast"
-VERSION = "0.1.3"
+VERSION = "0.1.4"
 ROOT = pathlib.Path(__file__).resolve().parent
 PACKAGE_DIR = ROOT / "spy_ast"
 VSRC_DIR = ROOT
@@ -147,6 +147,26 @@ def _vflags() -> list[str]:
     return shlex.split(os.environ.get("VFLAGS", ""))
 
 
+def _vflags_for_native() -> list[str]:
+    """Flags for building the shared lib and fallback binary.
+
+    V's default Linux backend is its bundled TCC, which emits a reference
+    to ``tcc_backtrace`` (builtin backtrace support). That symbol is
+    provided by the TCC runtime when linking executables, but stays
+    undefined in ``v -shared`` output, so ``dlopen()`` fails on
+    ubuntu-24.04 with ``undefined symbol: tcc_backtrace`` (py2many#857
+    attempt #3, 44 failures, all ``-k rust``). Forcing ``-cc gcc`` plus
+    ``-d no_backtrace`` avoids the TCC runtime entirely. Only applied on
+    Linux and only if the caller did not already select a compiler."""
+    flags = _vflags()
+    if sys.platform.startswith("linux"):
+        if not any(f == "-cc" or f.startswith("-cc=") for f in flags):
+            flags = ["-cc", "gcc", *flags]
+        if "no_backtrace" not in flags:
+            flags = ["-d", "no_backtrace", *flags]
+    return flags
+
+
 def _build_shared_library() -> tuple[str, bytes]:
     libname = _shared_lib_name()
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -154,10 +174,11 @@ def _build_shared_library() -> tuple[str, bytes]:
         out = temp_dir / libname
         target = temp_dir / "pyast"
         cmd = _with_module_path(
-            ["v", "-enable-globals", *_vflags(), "-shared", "-o", str(out), str(target)],
+            ["v", "-enable-globals", *_vflags_for_native(), "-shared", "-o", str(out), str(target)],
             temp_dir,
         )
         _run_checked(cmd, cwd=ROOT)
+        _assert_no_tcc_symbols(out)
         return libname, out.read_bytes()
 
 
@@ -168,12 +189,42 @@ def _build_binary() -> tuple[str, bytes]:
         out = temp_dir / f"{BINARY_BASENAME}{suffix}"
         target = temp_dir / "pyast" / "cmd" / "pyast_parser"
         cmd = _with_module_path(
-            ["v", "-enable-globals", *_vflags(), "-o", str(out), str(target)],
+            ["v", "-enable-globals", *_vflags_for_native(), "-o", str(out), str(target)],
             temp_dir,
         )
         _run_checked(cmd, cwd=ROOT)
         _remove_gnu_property_note(out)
         return out.name, out.read_bytes()
+
+
+def _assert_no_tcc_symbols(path: pathlib.Path) -> None:
+    """Fail fast if the shared lib keeps a TCC-runtime dependency.
+
+    ``tcc_backtrace`` is undefined in the 0.1.3 manylinux wheels and
+    breaks ``dlopen()`` on every Linux runner. ``nm`` may be absent on
+    some builders, so a missing tool is a no-op; finding the symbol is
+    a hard error."""
+    if not sys.platform.startswith("linux"):
+        return
+    data = path.read_bytes()
+    if b"tcc_backtrace" not in data:
+        return
+    nm = shutil.which("nm")
+    if nm is not None:
+        proc = subprocess.run(
+            [nm, "-D", "--undefined-only", str(path)],
+            check=False, text=True, capture_output=True,
+        )
+        if proc.returncode == 0 and "tcc_backtrace" in proc.stdout:
+            raise RuntimeError(
+                f"{path.name}: undefined symbol tcc_backtrace; "
+                "build with -cc gcc -d no_backtrace"
+            )
+        return
+    raise RuntimeError(
+        f"{path.name}: contains tcc_backtrace reference; "
+        "build with -cc gcc -d no_backtrace"
+    )
 
 
 def _build_python_extension() -> tuple[str, bytes]:
