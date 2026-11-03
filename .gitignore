@@ -139,3 +139,10 @@ tests/python_parser/parser_cache/py_parser.py
 
 # Vscode stuff
 .vscode
+
+# macOS metadata
+.DS_Store
+
+# Locally built parser binary (platform-specific build artifact;
+# CI and fresh checkouts build from V source via the wrapper fallback)
+spy_ast/_bin/
