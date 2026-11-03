@@ -137,7 +137,7 @@ pub type Expr = AttributeExpr
 	| YieldExpr
 	| YieldFromExpr
 
-pub type Pattern = BindPattern | ValuePattern | WildcardPattern
+pub type Pattern = BindPattern | ValuePattern | WildcardPattern | ClassPattern
 
 pub type Stmt = AnnAssignStmt
 	| AssertStmt
@@ -549,6 +549,16 @@ pub:
 	col      int
 	end_line int
 	end_col  int
+}
+
+pub struct ClassPattern {
+pub:
+	line     int
+	col      int
+	end_line int
+	end_col  int
+	cls Expr
+	patterns []Pattern
 }
 
 pub struct ExprStmt {
@@ -5114,6 +5124,8 @@ fn (mut p Parser) parse_match_stmt() !Stmt {
 				end_col: pattern.end_col
 				body: body
 			}
+		} else if pattern is ClassPattern {
+			return error('variant patterns in match statements not yet supported; use match expressions')
 		} else {
 			return error('capture patterns are not supported in match statements; use `_` for the default arm')
 		}
@@ -5226,9 +5238,84 @@ fn (mut p Parser) parse_pattern() !Pattern {
 				value: value
 			}
 		}
+		.string_lit {
+			// Single-character string literals stand for their codes
+			// (`'+'` is 43): no magic numbers in match patterns.
+			text := p.curr.text
+			if text.len != 1 {
+				return error('only single-character string literals allowed in patterns')
+			}
+			p.advance()!
+			ValuePattern{
+				line: start.line,
+				col: start.col,
+				end_line: p.prev_real.end_line,
+				end_col: p.prev_real.end_col,
+				value: int(text[0])
+			}
+		}
 		.ident {
 			name := p.curr.text
 			p.advance()!
+			// Variant patterns: `Token.PLUS()` / `Expr.ADD(l, r)`.
+			if p.curr.kind == .dot {
+				p.advance()!
+				if p.curr.kind != .ident {
+					return error('expected variant name after `.` in pattern')
+				}
+				attr := p.curr.text
+				p.advance()!
+				if p.curr.kind != .lparen {
+					return error('variant patterns need parentheses: `Token.PLUS()` / `Expr.ADD(l, r)`')
+				}
+				p.advance()!
+				mut subpats := []Pattern{}
+				if p.curr.kind != .rparen {
+					for {
+						if p.curr.kind == .underscore {
+							subpats << WildcardPattern{
+								line: p.curr.line, col: p.curr.col,
+								end_line: p.curr.end_line, end_col: p.curr.end_col,
+							}
+							p.advance()!
+						} else if p.curr.kind == .ident {
+							bname := p.curr.text
+							p.advance()!
+							subpats << BindPattern{
+								line: start.line, col: start.col,
+								end_line: p.prev_real.end_line, end_col: p.prev_real.end_col,
+								name: bname
+							}
+						} else {
+							return error('variant pattern bindings must be names or `_`')
+						}
+						if p.curr.kind == .comma {
+							p.advance()!
+							continue
+						}
+						break
+					}
+				}
+				if p.curr.kind != .rparen {
+					return error('expected `)` to close variant pattern')
+				}
+				p.advance()!
+				base := NameExpr{
+					line: start.line, col: start.col,
+					end_line: start.end_line, end_col: start.end_col,
+					name: name
+				}
+				cls := AttributeExpr{
+					line: start.line, col: start.col,
+					end_line: p.prev_real.end_line, end_col: p.prev_real.end_col,
+					value: base, attr: attr
+				}
+				return ClassPattern{
+					line: start.line, col: start.col,
+					end_line: p.prev_real.end_line, end_col: p.prev_real.end_col,
+					cls: cls, patterns: subpats
+				}
+			}
 			BindPattern{
 				line: start.line,
 				col: start.col,
@@ -5254,7 +5341,7 @@ fn (mut p Parser) parse_pattern() !Pattern {
 }
 
 fn is_pattern_start(kind TokenKind) bool {
-	return kind == .underscore || kind == .int_lit || kind == .ident
+	return kind == .underscore || kind == .int_lit || kind == .ident || kind == .string_lit
 }
 
 fn (mut p Parser) consume_newlines() ! {
@@ -5533,6 +5620,13 @@ fn pattern_json(pattern Pattern) string {
 		WildcardPattern { '{"type":"MatchAs","name":null,"line":${pattern.line},"col":${pattern.col},"end_line":${pattern.end_line},"end_col":${pattern.end_col}}' }
 		BindPattern { '{"type":"MatchAs","name":"${json_escape(pattern.name)}","line":${pattern.line},"col":${pattern.col},"end_line":${pattern.end_line},"end_col":${pattern.end_col}}' }
 		ValuePattern { '{"type":"MatchValue","value":{"type":"Constant","value":${pattern.value}},"line":${pattern.line},"col":${pattern.col},"end_line":${pattern.end_line},"end_col":${pattern.end_col}}' }
+		ClassPattern {
+			mut parts := []string{}
+			for sub in pattern.patterns {
+				parts << pattern_json(sub)
+			}
+			'{"type":"MatchClass","cls":${expr_json(pattern.cls)},"patterns":[${parts.join(',')}],"kwd_attrs":[],"kwd_patterns":[],"line":${pattern.line},"col":${pattern.col},"end_line":${pattern.end_line},"end_col":${pattern.end_col}}'
+		}
 	}
 }
 

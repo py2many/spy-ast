@@ -551,6 +551,13 @@ def _pattern_from_json_inner(data: dict[str, Any]) -> ast.pattern:
         if not isinstance(value, ast.Constant):
             raise SpySyntaxError("MatchValue must contain Constant")
         return ast.MatchValue(value=value)
+    if kind == "MatchClass":
+        return ast.MatchClass(
+            cls=_expr_from_json(data["cls"]),
+            patterns=[_pattern_from_json(item) for item in data.get("patterns", [])],
+            kwd_attrs=list(data.get("kwd_attrs", [])),
+            kwd_patterns=[_pattern_from_json(item) for item in data.get("kwd_patterns", [])],
+        )
     raise SpySyntaxError(f"unsupported pattern type: {kind}")
 
 
