@@ -450,10 +450,11 @@ def test_sealed_token_and_expr() -> None:
 def test_parse_match_expr_fixture() -> None:
     # Pinned copy of py2many's tests/cases/match_expr.py: the
     # match-as-expression dialect fixture (lexer + shunting-yard parser
-    # + is_* evaluator over sealed Token/Expr).
+    # + match-based evaluator over sealed Token/Expr, no int op codes).
     source = Path(__file__).resolve().parents[1] / "examples" / "match_expr.py"
     parsed = parse_module(source.read_text())
     dumped = ast.dump(parsed)
-    assert dumped.count("Match(subject=") == 5
-    assert dumped.count("MatchValue") == 38
+    assert dumped.count("Match(subject=") == 6
+    # Variant patterns (Token.PLUS(), Expr.ADD(l, r)) as MatchClass.
+    assert dumped.count("MatchClass") == 18
     assert "MatchAs()" in dumped
