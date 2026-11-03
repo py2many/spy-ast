@@ -41,5 +41,12 @@ jobs:
       run: |
         python3 -m pip install --upgrade pip
         python3 -m pip install pytest
+    - name: Build parser binary (test fast path)
+      run: |
+        mkdir -p spy_ast/_bin
+        TMPD=$(mktemp -d)
+        ln -s "$GITHUB_WORKSPACE" "$TMPD/pyast"
+        v -enable-globals -path "$TMPD|@vlib|@vmodules" -cc gcc -d no_backtrace -o spy_ast/_bin/pyast_parser "$TMPD/pyast/cmd/pyast_parser"
+        rm -rf "$TMPD"
     - name: Pytest
       run: pytest tests_vlang_parser
