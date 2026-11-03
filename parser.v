@@ -92,6 +92,121 @@ enum TokenKind {
 	fstr_end
 }
 
+// StrPrefixKind classifies an identifier immediately followed by a quote.
+// Exhaustive: every prefix maps to exactly one variant, so callers match
+// instead of chaining `if lower == ...` tests on magic ints.
+enum StrPrefixKind {
+	plain
+	raw
+	fstring
+	bytes_lit
+}
+
+// IntBase enumerates the integer literal bases Python allows.
+// The discriminant is the radix itself so `int(base)` is the multiplier.
+enum IntBase {
+	binary = 2
+	octal = 8
+	decimal = 10
+	hexadecimal = 16
+}
+
+// TokenKind membership sets: O(1) map lookups replacing linear `in [..]`
+// list scans and `== .. || == ..` chains. Each set names a parser-level
+// category so call sites read as `kind in <category>_set`.
+const name_token_set = {
+	TokenKind.ident:      true
+	TokenKind.underscore: true
+	TokenKind.kw_match:   true
+}
+const pattern_start_set = {
+	TokenKind.underscore: true
+	TokenKind.int_lit:    true
+	TokenKind.ident:      true
+	TokenKind.string_lit: true
+}
+const non_real_token_set = {
+	TokenKind.indent:  true
+	TokenKind.dedent:  true
+	TokenKind.newline: true
+	TokenKind.eof:     true
+}
+const import_start_set = {
+	TokenKind.kw_import: true
+	TokenKind.kw_from:   true
+}
+const scope_decl_set = {
+	TokenKind.kw_global:   true
+	TokenKind.kw_nonlocal: true
+}
+const string_part_set = {
+	TokenKind.string_lit: true
+	TokenKind.fstr_start: true
+}
+const bracket_open_token_set = {
+	TokenKind.lparen:   true
+	TokenKind.lbracket: true
+	TokenKind.lbrace:   true
+}
+const yield_terminator_set = {
+	TokenKind.newline:          true
+	TokenKind.eof:              true
+	TokenKind.rparen:           true
+	TokenKind.rbracket:         true
+	TokenKind.rbrace:           true
+	TokenKind.comma:            true
+	TokenKind.colon:            true
+	TokenKind.fstr_field_close: true
+}
+const shift_op_set = {
+	TokenKind.lshift: true
+	TokenKind.rshift: true
+}
+const additive_op_set = {
+	TokenKind.plus:  true
+	TokenKind.minus: true
+}
+const multiplicative_op_set = {
+	TokenKind.star:     true
+	TokenKind.slash:    true
+	TokenKind.floordiv: true
+	TokenKind.percent:  true
+	TokenKind.at_sign:  true
+}
+const unary_prefix_set = {
+	TokenKind.plus:  true
+	TokenKind.minus: true
+	TokenKind.tilde: true
+}
+// Byte-level membership sets for the lexer hot paths.
+const quote_char_set = {
+	u8(`"`): true
+	u8(`'`):  true
+}
+const inline_ws_set = {
+	u8(` `):  true
+	u8(`\r`): true
+	u8(`\t`): true
+}
+const bracket_open_char_set = {
+	u8(`{`): true
+	u8(`(`): true
+	u8(`[`): true
+}
+const bracket_close_char_set = {
+	u8(`}`): true
+	u8(`)`): true
+	u8(`]`): true
+}
+const bin_digit_char_set = {
+	u8(`0`): true
+	u8(`1`): true
+}
+const float_exp_char_set = {
+	u8(`e`): true
+	u8(`E`): true
+}
+
 struct Token {
 mut:
 	kind     TokenKind
@@ -1004,7 +1119,7 @@ fn (mut l Lexer) next_token_inner() !Token {
 		if is_digit(ch) {
 			return l.lex_number()!
 		}
-		if ch == `"` || ch == `'` {
+		if ch in quote_char_set {
 			text := l.read_string_literal(ch)!
 			return Token{
 				kind: .string_lit
@@ -1554,7 +1669,7 @@ fn (mut l Lexer) handle_indentation() ! {
 fn (mut l Lexer) skip_inline_ws() {
 	for l.pos < l.source.len {
 		ch := l.source[l.pos]
-		if ch == ` ` || ch == `\r` || ch == `\t` {
+		if ch in inline_ws_set {
 			l.pos++
 			continue
 		}
@@ -1589,28 +1704,34 @@ fn is_oct_digit(ch u8) bool {
 }
 
 fn is_bin_digit(ch u8) bool {
-	return ch == `0` || ch == `1`
+	return ch in bin_digit_char_set
 }
 
 fn is_float_exponent(ch u8) bool {
-	return ch == `e` || ch == `E`
+	return ch in float_exp_char_set
 }
 
-// string_prefix_kind reports how an identifier immediately followed by a
-// quote should be treated: 1 = plain/raw (r, u), 2 = f-string (f, rf),
-// -1 = rejected (b, br). Returns 0 for ordinary identifiers.
+// classify_prefix reports how an identifier immediately followed by a
+// quote should be treated. Exhaustive match replaces the old
+// if/else chain over magic ints (1/2/-1/0).
+fn classify_prefix(text string) StrPrefixKind {
+	return match text.to_lower() {
+		'r', 'u' { .raw }
+		'f', 'fr', 'rf' { .fstring }
+		'b', 'br', 'rb' { .bytes_lit }
+		else { .plain }
+	}
+}
+
+// string_prefix_kind is kept for backward compatibility: non-zero means
+// the identifier is a string prefix of some kind.
 fn string_prefix_kind(text string) int {
-	lower := text.to_lower()
-	if lower == 'r' || lower == 'u' {
-		return 1
+	return match classify_prefix(text) {
+		.plain { 0 }
+		.raw { 1 }
+		.fstring { 2 }
+		.bytes_lit { -1 }
 	}
-	if lower == 'f' || lower == 'fr' || lower == 'rf' {
-		return 2
-	}
-	if lower == 'b' || lower == 'br' || lower == 'rb' {
-		return -1
-	}
-	return 0
 }
 
 // normalize_float_lexeme converts a Python float literal into a JSON-safe
@@ -1642,84 +1763,67 @@ fn parse_int_literal(text string) !int {
 	}
 	if digits.len > 2 && digits[0] == `0`
 		&& (digits[1] == `x` || digits[1] == `X` || digits[1] == `o` || digits[1] == `O` || digits[1] == `b` || digits[1] == `B`) {
-		base := if digits[1] == `x` || digits[1] == `X` {
-				16
-			} else if digits[1] == `o` || digits[1] == `O` {
-				8
-			} else {
-				2
-			}
+		base := match digits[1] {
+			`x`, `X` { IntBase.hexadecimal }
+			`o`, `O` { IntBase.octal }
+			`b`, `B` { IntBase.binary }
+			else { IntBase.decimal }
+		}
+		radix := int(base)
 		mut value := 0
 		for i := 2; i < digits.len; i++ {
 			ch := digits[i]
-		digit := if ch >= `0` && ch <= `9` {
-				int(ch - `0`)
-			} else if ch >= `a` && ch <= `f` {
-				int(ch - `a`) + 10
-			} else if ch >= `A` && ch <= `F` {
-				int(ch - `A`) + 10
-			} else {
+			digit := match true {
+				ch >= `0` && ch <= `9` { int(ch - `0`) }
+				ch >= `a` && ch <= `f` { int(ch - `a`) + 10 }
+				ch >= `A` && ch <= `F` { int(ch - `A`) + 10 }
+				else { return error('invalid integer literal') }
+			}
+			if digit >= radix {
 				return error('invalid integer literal')
 			}
-			if digit >= base {
-				return error('invalid integer literal')
-			}
-			value = value * base + digit
+			value = value * radix + digit
 		}
 		return value
 	}
 	return strconv.atoi(digits) or { return error('invalid integer literal') }
 }
 
+// lex_base_int consumes a `0x`/`0o`/`0b` prefix plus its digits. The
+// `valid` predicate selects the digit set, so the three hexadecimal,
+// octal, and binary branches share one implementation instead of three
+// near-identical if blocks.
+fn (mut l Lexer) lex_base_int(start int, valid fn (u8) bool, err_msg string) !Token {
+	l.pos += 2
+	digits := l.pos
+	for l.pos < l.source.len && (valid(l.source[l.pos]) || l.source[l.pos] == `_`) {
+		l.pos++
+	}
+	if l.pos == digits {
+		return error(err_msg)
+	}
+	return Token{
+		kind: .int_lit
+		text: l.source[start..l.pos]
+	}
+}
+
 fn (mut l Lexer) lex_number() !Token {
 	start := l.pos
-	// Non-decimal integer bases.
+	// Non-decimal integer bases: exhaustive match on the base prefix.
 	if l.source[l.pos] == `0` && l.pos + 1 < l.source.len {
 		next := l.source[l.pos + 1]
-			if next == `x` || next == `X` {
-			l.pos += 2
-		digits := l.pos
-			for l.pos < l.source.len
-				&& (is_hex_digit(l.source[l.pos]) || l.source[l.pos] == `_`) {
-				l.pos++
+		match next {
+			`x`, `X` {
+				return l.lex_base_int(start, is_hex_digit, 'invalid hexadecimal literal')
 			}
-			if l.pos == digits {
-				return error('invalid hexadecimal literal')
+			`o`, `O` {
+				return l.lex_base_int(start, is_oct_digit, 'invalid octal literal')
 			}
-			return Token{
-				kind: .int_lit
-				text: l.source[start..l.pos]
+			`b`, `B` {
+				return l.lex_base_int(start, is_bin_digit, 'invalid binary literal')
 			}
-		}
-		if next == `o` || next == `O` {
-			l.pos += 2
-			digits := l.pos
-			for l.pos < l.source.len
-				&& (is_oct_digit(l.source[l.pos]) || l.source[l.pos] == `_`) {
-				l.pos++
-			}
-			if l.pos == digits {
-				return error('invalid octal literal')
-			}
-			return Token{
-				kind: .int_lit
-				text: l.source[start..l.pos]
-			}
-		}
-		if next == `b` || next == `B` {
-			l.pos += 2
-			digits := l.pos
-			for l.pos < l.source.len
-				&& (is_bin_digit(l.source[l.pos]) || l.source[l.pos] == `_`) {
-				l.pos++
-			}
-			if l.pos == digits {
-				return error('invalid binary literal')
-			}
-			return Token{
-				kind: .int_lit
-				text: l.source[start..l.pos]
-			}
+			else {}
 		}
 	}
 	// Decimal integer or float.
@@ -1885,16 +1989,12 @@ fn (mut l Lexer) read_raw_string_literal(quote u8) !string {
 }
 
 fn hex_val(c u8) int {
-	if c >= `0` && c <= `9` {
-		return int(c - `0`)
+	return match true {
+		c >= `0` && c <= `9` { int(c - `0`) }
+		c >= `a` && c <= `f` { int(c - `a`) + 10 }
+		c >= `A` && c <= `F` { int(c - `A`) + 10 }
+		else { -1 }
 	}
-	if c >= `a` && c <= `f` {
-		return int(c - `a`) + 10
-	}
-	if c >= `A` && c <= `F` {
-		return int(c - `A`) + 10
-	}
-	return -1
 }
 
 fn bytes_to_text(b []u8) string {
@@ -2008,38 +2108,46 @@ fn unescape_bytes(s string) ![]u8 {
 
 fn (mut l Lexer) lex_prefixed_string(prefix_text string) !Token {
 	lower := prefix_text.to_lower()
-	if lower.contains('b') {
-		is_raw := lower.contains('r')
-		quote := l.source[l.pos]
-		raw := l.read_raw_string_literal(quote)!
-		mut data := []u8{}
-		if is_raw {
-			for k := 0; k < raw.len; k++ {
-				data << raw[k]
+	// Exhaustive dispatch on the prefix kind replaces the
+// if contains('b') / contains('f') / contains('r') chain.
+	return match classify_prefix(prefix_text) {
+		.bytes_lit {
+			is_raw := lower.contains('r')
+			quote := l.source[l.pos]
+			raw := l.read_raw_string_literal(quote)!
+			mut data := []u8{}
+			if is_raw {
+				for k := 0; k < raw.len; k++ {
+					data << raw[k]
+				}
+			} else {
+				data = unescape_bytes(raw)!
 			}
-		} else {
-			data = unescape_bytes(raw)!
+			Token{
+				kind: .bytes_lit
+				text: bytes_to_text(data)
+			}
 		}
-		return Token{
-			kind: .bytes_lit
-			text: bytes_to_text(data)
+		.fstring {
+			quote := l.source[l.pos]
+			l.lex_fstring(quote, lower.contains('r'))!
 		}
-	}
-	quote := l.source[l.pos]
-	if lower.contains('f') {
-		return l.lex_fstring(quote, lower.contains('r'))
-	}
-	if lower.contains('r') {
-		text := l.read_raw_string_literal(quote)!
-		return Token{
-			kind: .string_lit
-			text: text
+		.raw {
+			quote := l.source[l.pos]
+			text := l.read_raw_string_literal(quote)!
+			Token{
+				kind: .string_lit
+				text: text
+			}
 		}
-	}
-	text := l.read_string_literal(quote)!
-	return Token{
-		kind: .string_lit
-		text: text
+		.plain {
+			quote := l.source[l.pos]
+			text := l.read_string_literal(quote)!
+			Token{
+				kind: .string_lit
+				text: text
+			}
+		}
 	}
 }
 
@@ -2224,7 +2332,7 @@ fn (mut l Lexer) lex_fstring_field() ![]Token {
 			}
 			continue
 		}
-		if ch == `"` || ch == `'` {
+		if ch in quote_char_set {
 			str_quote = ch
 			str_triple = i + 2 < l.source.len && l.source[i + 1] == ch
 				&& l.source[i + 2] == ch
@@ -2286,18 +2394,18 @@ fn (mut l Lexer) lex_fstring_field() ![]Token {
 			k++
 			continue
 		}
-		if ch == `"` || ch == `'` {
+		if ch in quote_char_set {
 			sstr = ch
 			striple = k + 2 < extent.len && extent[k + 1] == ch && extent[k + 2] == ch
 			k += if striple { 3 } else { 1 }
 			continue
 		}
-		if ch == `{` || ch == `(` || ch == `[` {
+		if ch in bracket_open_char_set {
 			sdepth++
 			k++
 			continue
 		}
-		if ch == `}` || ch == `)` || ch == `]` {
+		if ch in bracket_close_char_set {
 			sdepth--
 			k++
 			continue
@@ -2351,19 +2459,19 @@ fn (mut l Lexer) lex_fstring_field() ![]Token {
 			m++
 			continue
 		}
-		if ch == `"` || ch == `'` {
+		if ch in quote_char_set {
 			cstr = ch
 			ctriple = m + 2 < expr_src.len && expr_src[m + 1] == ch
 				&& expr_src[m + 2] == ch
 			m += if ctriple { 3 } else { 1 }
 			continue
 		}
-		if ch == `{` || ch == `(` || ch == `[` {
+		if ch in bracket_open_char_set {
 			cdepth++
 			m++
 			continue
 		}
-		if ch == `}` || ch == `)` || ch == `]` {
+		if ch in bracket_close_char_set {
 			cdepth--
 			m++
 			continue
@@ -3036,7 +3144,7 @@ fn (mut p Parser) parse_block_suite() ![]Stmt {
 
 fn (mut p Parser) parse_simple_stmt() !Stmt {
 	start := p.curr
-	if p.curr.kind == .kw_import || p.curr.kind == .kw_from {
+	if p.curr.kind in import_start_set {
 		return p.parse_import_stmt()
 	}
 	if p.curr.kind == .kw_pass {
@@ -3144,7 +3252,7 @@ fn (mut p Parser) parse_simple_stmt() !Stmt {
 			cause: cause
 		}
 	}
-	if p.curr.kind == .kw_global || p.curr.kind == .kw_nonlocal {
+	if p.curr.kind in scope_decl_set {
 		is_global := p.curr.kind == .kw_global
 		p.advance()!
 		mut names := []string{}
@@ -3793,7 +3901,7 @@ fn (mut p Parser) parse_bitand() !Expr {
 fn (mut p Parser) parse_shift() !Expr {
 	start := p.curr
 	mut left := p.parse_additive()!
-	for (p.curr.kind == .lshift || p.curr.kind == .rshift) && p.next.kind != .assign {
+	for p.curr.kind in shift_op_set && p.next.kind != .assign {
 		op := if p.curr.kind == .lshift { 'LShift' } else { 'RShift' }
 		p.advance()!
 		right := p.parse_additive()!
@@ -3813,7 +3921,7 @@ fn (mut p Parser) parse_shift() !Expr {
 fn (mut p Parser) parse_additive() !Expr {
 	start := p.curr
 	mut left := p.parse_multiplicative()!
-	for (p.curr.kind == .plus || p.curr.kind == .minus) && p.next.kind != .assign {
+	for p.curr.kind in additive_op_set && p.next.kind != .assign {
 		op := if p.curr.kind == .plus { 'Add' } else { 'Sub' }
 		p.advance()!
 		right := p.parse_multiplicative()!
@@ -3833,8 +3941,7 @@ fn (mut p Parser) parse_additive() !Expr {
 fn (mut p Parser) parse_multiplicative() !Expr {
 	start := p.curr
 	mut left := p.parse_unary()!
-	for (p.curr.kind == .star || p.curr.kind == .slash || p.curr.kind == .floordiv
-		|| p.curr.kind == .percent || p.curr.kind == .at_sign) && p.next.kind != .assign {
+	for p.curr.kind in multiplicative_op_set && p.next.kind != .assign {
 		op := match p.curr.kind {
 			.star { 'Mult' }
 			.slash { 'Div' }
@@ -3869,7 +3976,7 @@ fn (mut p Parser) parse_unary() !Expr {
 			value: p.parse_unary()!
 		}
 	}
-	if p.curr.kind == .plus || p.curr.kind == .minus || p.curr.kind == .tilde {
+	if p.curr.kind in unary_prefix_set {
 		op := match p.curr.kind {
 			.plus { 'UAdd' }
 			.minus { 'USub' }
@@ -3934,9 +4041,7 @@ fn (mut p Parser) parse_yield_expr() !Expr {
 			value: p.parse_expr()!
 		}
 	}
-	if p.curr.kind == .newline || p.curr.kind == .eof || p.curr.kind == .rparen
-		|| p.curr.kind == .rbracket || p.curr.kind == .rbrace || p.curr.kind == .comma
-		|| p.curr.kind == .colon || p.curr.kind == .fstr_field_close {
+	if p.curr.kind in yield_terminator_set {
 		return YieldExpr{
 			line: start.line,
 			col: start.col,
@@ -4184,20 +4289,28 @@ fn (mut p Parser) restore_state(s ParserState) {
 // is_name_token reports tokens usable where Python allows a plain name.
 // `match` is a soft keyword, so it doubles as an identifier.
 fn is_name_token(kind TokenKind) bool {
-	return kind == .ident || kind == .underscore || kind == .kw_match
+	return kind in name_token_set
 }
 
 fn (mut p Parser) parse_name_text() !string {
-	if p.curr.kind == .ident || p.curr.kind == .underscore {
-		name := if p.curr.kind == .underscore { '_' } else { p.curr.text }
-		p.advance()!
-		return name
+	return match p.curr.kind {
+		.ident {
+			name := p.curr.text
+			p.advance()!
+			name
+		}
+		.underscore {
+			p.advance()!
+			'_'
+		}
+		.kw_match {
+			p.advance()!
+			'match'
+		}
+		else {
+			return error('expected name, found ${p.curr.kind}')
+		}
 	}
-	if p.curr.kind == .kw_match {
-		p.advance()!
-		return 'match'
-	}
-	return error('expected name, found ${p.curr.kind}')
 }
 
 fn (mut p Parser) parse_primary() !Expr {
@@ -4348,7 +4461,7 @@ fn (mut p Parser) parse_bytes_atom() !Expr {
 // builtin parsing; mixing in f-strings yields a JoinedStr.
 fn (mut p Parser) parse_string_atom() !Expr {
 	mut parts := []Expr{}
-	for p.curr.kind == .string_lit || p.curr.kind == .fstr_start {
+	for p.curr.kind in string_part_set {
 		if p.curr.kind == .string_lit {
 			lit_tok := p.curr
 			parts << StringExpr{
@@ -4912,7 +5025,7 @@ fn (mut p Parser) parse_paren_match_expr() !Expr {
 	// NB: p.next is already lexed here; if it opened a bracket (e.g. the
 	// inner paren of `(match (match ...`), brace_depth includes it.
 	mut entry := p.lexer.brace_depth
-	if p.next.kind == .lparen || p.next.kind == .lbracket || p.next.kind == .lbrace {
+	if p.next.kind in bracket_open_token_set {
 		entry--
 	}
 	p.lexer.paren_layout_depth = entry
@@ -5341,7 +5454,7 @@ fn (mut p Parser) parse_pattern() !Pattern {
 }
 
 fn is_pattern_start(kind TokenKind) bool {
-	return kind == .underscore || kind == .int_lit || kind == .ident || kind == .string_lit
+	return kind in pattern_start_set
 }
 
 fn (mut p Parser) consume_newlines() ! {
@@ -5358,7 +5471,7 @@ fn (mut p Parser) expect(kind TokenKind) ! {
 }
 
 fn (mut p Parser) advance() ! {
-	if p.curr.kind !in [.indent, .dedent, .newline, .eof] {
+	if p.curr.kind !in non_real_token_set {
 		p.prev_real = p.curr
 	}
 	p.curr = p.next
