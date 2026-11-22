@@ -1,6 +1,6 @@
 Module {
 	name: 'pyast'
 	description: 'V-based parser for a modified Python dialect with match as an expression.'
-	version: '0.1.9'
+	version: '0.1.10'
 	license: 'MIT'
 }
