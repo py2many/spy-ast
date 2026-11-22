@@ -102,6 +102,10 @@ jobs:
             platform: arm64
             runner: macos-latest
             vflags: "-cc clang"
+          - os: macos
+            platform: x86_64
+            runner: macos-15-intel
+            vflags: "-cc clang"
           - os: windows
             platform: amd64
             runner: windows-latest
@@ -241,24 +245,53 @@ jobs:
           path: wheelhouse/*.whl
           if-no-files-found: error
 
-  deploy:
-    name: Deploy wheels to PyPI
+  build-sdist:
+    name: Build sdist
     runs-on: ubuntu-latest
-    needs: build-wheels
+    needs: test
+    if: github.event_name == 'release'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      # build_backend.build_sdist only packages sources (no V toolchain needed).
+      - name: Build sdist
+        run: uv build --sdist --out-dir dist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: v-ast-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy to PyPI
+    runs-on: ubuntu-latest
+    needs: [build-wheels, build-sdist]
     if: github.event_name == 'release'
     permissions:
       contents: read
       id-token: write
 
     steps:
-      - name: Download wheels
+      - name: Download wheels and sdist
         uses: actions/download-artifact@v4
         with:
-          pattern: v-ast-wheel-*
+          pattern: v-ast-*
           path: dist
           merge-multiple: true
 
-      - name: Publish wheels
+      - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
